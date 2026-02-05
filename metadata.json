@@ -1,0 +1,7 @@
+{
+  "name": "AFH Floor Planner & Safety Designer",
+  "description": "A comprehensive tool for designing house floor plans and emergency exit routes, specifically tailored for Adult Family Homes (AFH) with AI-powered safety insights.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
