@@ -1158,6 +1158,60 @@ const App: React.FC = () => {
                <button onClick={handleCopy} disabled={!state.selectedId} className={`p-1.5 rounded-md transition-all ${state.selectedId ? 'text-slate-600 hover:bg-slate-100' : 'text-slate-300'}`}><Copy size={14} /></button>
                <button onClick={handlePaste} disabled={!clipboard} className={`p-1.5 rounded-md transition-all ${clipboard ? 'text-slate-600 hover:bg-slate-100' : 'text-slate-300'}`}><Clipboard size={14} /></button>
              </div>
+             
+             {/* Screen/Canvas Size */}
+            <div className="flex items-center gap-1 mr-2 border border-slate-200 rounded-lg bg-white p-1" title="Canvas Size">
+              <Scaling size={16} className="text-slate-400 ml-1"/>
+              <select 
+                value={`${state.canvasWidth}x${state.canvasHeight}`}
+                onChange={handleCanvasSizeChange}
+                className="text-[10px] font-black bg-transparent outline-none text-slate-600 w-20 text-center cursor-pointer"
+              >
+                <option value="800x800">800x800</option>
+                <option value="1200x800">1200x800</option>
+                <option value="1200x1200">1200x1200</option>
+                <option value="1600x1200">1600x1200</option>
+              </select>
+            </div>
+
+            {/* Rotate Whole Plan */}
+            <button type="button" onClick={handleRotatePlan} className="p-2 mr-2 bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-indigo-600 hover:border-indigo-400 transition-all" title="Rotate Plan 90°">
+              <RefreshCcw size={16}/>
+            </button>
+
+            {/* Grid Controls */}
+            <div className="flex items-center gap-1 mr-2 border border-slate-200 rounded-lg bg-white p-1">
+              <button
+                type="button"
+                onClick={() => setState(prev => ({...prev, snapToGrid: !prev.snapToGrid}))}
+                title="Toggle Snap to Grid"
+                className={`p-1.5 rounded-md transition-all ${state.snapToGrid ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                <Grid3X3 size={16} />
+              </button>
+              <select 
+                value={state.gridSize}
+                onChange={(e) => setState(prev => ({...prev, gridSize: Number(e.target.value)}))}
+                className="text-[10px] font-black bg-transparent outline-none text-slate-600 w-12 text-center cursor-pointer"
+              >
+                <option value="10">10px</option>
+                <option value="20">20px</option>
+                <option value="40">40px</option>
+                <option value="50">50px</option>
+              </select>
+            </div>
+
+            {/* Dimensions Toggle */}
+            <button 
+              type="button"
+              onClick={() => setState(prev => ({...prev, showDimensions: !prev.showDimensions}))}
+              className={`flex items-center gap-2 px-3 py-1.5 mr-2 rounded-lg border text-[10px] font-black tracking-widest transition-all ${state.showDimensions ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-400 hover:text-indigo-600'}`}
+            >
+              <Ruler size={14}/> DIMENSIONS
+            </button>
+            
+            <div className="w-px h-6 bg-slate-200 mx-1" />
+
              {/* Other header controls ... */}
              <button type="button" onClick={handlePrint} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-black text-slate-600 hover:border-indigo-400 hover:text-indigo-600 transition-all active:scale-95"><Printer size={16}/> PRINT</button>
              <button type="button" onClick={handleExportPNG} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 text-white rounded-lg text-[10px] font-black hover:bg-slate-700 transition-all shadow-md active:scale-95"><Download size={16}/> EXPORT PNG</button>
@@ -1438,26 +1492,59 @@ const App: React.FC = () => {
                     onClick={e => e.stopPropagation()} 
                     className="cursor-move z-20 group"
                 >
-                   {/* Exit Graphics ... */}
+                   {/* PRIMARY EXIT */}
                    {ex.type === 'primary' && (
                       <g>
                          <circle cx={ex.x} cy={ex.y} r={18} fill="#22c55e" stroke="white" strokeWidth="2" className="shadow-sm"/>
                          <path d={`M ${ex.x-6},${ex.y} l 12,0 m -4,-4 l 4,4 l -4,4`} fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-                         <text x={ex.x} y={ex.y + 30} textAnchor="middle" className="text-[10px] font-black fill-green-700 uppercase">EXIT</text>
+                         <text x={ex.x} y={ex.y + 30} textAnchor="middle" className="text-[10px] font-black fill-green-700 uppercase select-none">EXIT</text>
                       </g>
                    )}
-                   {/* ... Other Exit types ... */}
-                   {!['primary'].includes(ex.type) && (
+
+                   {/* FIRST AID */}
+                   {ex.type === 'first-aid' && (
                       <g>
-                        <circle cx={ex.x} cy={ex.y} r={18} fill={ex.type==='extinguisher' || ex.type === 'fire-alarm' ? "#ef4444" : "#fff"} stroke={ex.type==='first-aid'?"#22c55e":"white"} strokeWidth="2" className="shadow-sm"/>
-                        <text x={ex.x} y={ex.y+4} textAnchor="middle" className={`text-[10px] font-black ${ex.type==='first-aid'?'fill-green-600':'fill-white'}`}>{ex.type.substring(0,2).toUpperCase()}</text>
+                        <rect x={ex.x - 15} y={ex.y - 15} width={30} height={30} rx={6} fill="#22c55e" stroke="white" strokeWidth="2" className="shadow-sm" />
+                        <path d={`M ${ex.x-4},${ex.y-10} L ${ex.x+4},${ex.y-10} L ${ex.x+4},${ex.y-4} L ${ex.x+10},${ex.y-4} L ${ex.x+10},${ex.y+4} L ${ex.x+4},${ex.y+4} L ${ex.x+4},${ex.y+10} L ${ex.x-4},${ex.y+10} L ${ex.x-4},${ex.y+4} L ${ex.x-10},${ex.y+4} L ${ex.x-10},${ex.y-4} L ${ex.x-4},${ex.y-4} Z`} fill="white" />
+                        <text x={ex.x} y={ex.y + 28} textAnchor="middle" className="text-[9px] font-black fill-green-700 uppercase drop-shadow-sm select-none">{ex.label}</text>
+                      </g>
+                   )}
+
+                   {/* FIRE EXTINGUISHER */}
+                   {ex.type === 'extinguisher' && (
+                      <g>
+                        <path d={`M ${ex.x-6},${ex.y-10} L ${ex.x+6},${ex.y-10} L ${ex.x+8},${ex.y+15} L ${ex.x-8},${ex.y+15} Z`} fill="#ef4444" stroke="#991b1b" strokeWidth="2" />
+                        <rect x={ex.x-3} y={ex.y-14} width={6} height={4} fill="#374151" />
+                        <path d={`M ${ex.x+3},${ex.y-12} Q ${ex.x+12},${ex.y-12} ${ex.x+12},${ex.y}`} fill="none" stroke="#1f2937" strokeWidth="2" />
+                        <text x={ex.x} y={ex.y + 28} textAnchor="middle" className="text-[9px] font-black fill-red-700 uppercase drop-shadow-sm select-none">{ex.label}</text>
+                      </g>
+                   )}
+
+                   {/* FIRE ALARM */}
+                   {ex.type === 'fire-alarm' && (
+                      <g>
+                        <circle cx={ex.x} cy={ex.y} r={14} fill="#ef4444" stroke="#991b1b" strokeWidth="2" />
+                        <circle cx={ex.x} cy={ex.y} r={10} fill="none" stroke="white" strokeWidth="1" />
+                        <path d={`M ${ex.x-2},${ex.y-6} L ${ex.x-2},${ex.y+4} L ${ex.x+4},${ex.y+4}`} fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" />
+                        <path d={`M ${ex.x-18},${ex.y-8} Q ${ex.x-22},${ex.y} ${ex.x-18},${ex.y+8}`} fill="none" stroke="#ef4444" strokeWidth="2" opacity="0.6" />
+                        <path d={`M ${ex.x+18},${ex.y-8} Q ${ex.x+22},${ex.y} ${ex.x+18},${ex.y+8}`} fill="none" stroke="#ef4444" strokeWidth="2" opacity="0.6" />
+                        <text x={ex.x} y={ex.y + 28} textAnchor="middle" className="text-[9px] font-black fill-red-700 uppercase drop-shadow-sm select-none">{ex.label}</text>
+                      </g>
+                   )}
+
+                   {/* Fallback for 'secondary' or others */}
+                   {!['primary', 'first-aid', 'extinguisher', 'fire-alarm'].includes(ex.type) && (
+                      <g>
+                        <circle cx={ex.x} cy={ex.y} r={18} fill="#fff" stroke="#94a3b8" strokeWidth="2" className="shadow-sm"/>
+                        <text x={ex.x} y={ex.y+4} textAnchor="middle" className="text-[10px] font-black fill-slate-500">{ex.type.substring(0,2).toUpperCase()}</text>
                         <text x={ex.x} y={ex.y + 35} textAnchor="middle" className="text-[10px] font-black fill-slate-900 uppercase pointer-events-none drop-shadow-sm">{ex.label}</text>
                       </g>
                    )}
 
+                   {/* Selection and Rotation handles remain the same */}
                    {state.selectedId === ex.id && (
                      <g className="print:hidden cursor-grab active:cursor-grabbing group/rotate" onMouseDown={e => onMouseDown(e, 'rotate', ex.id)}>
-                        <line x1={ex.x} y1={ex.y - 18} x2={ex.x} y2={ex.y - 45} stroke="#4f46e5" strokeWidth="2" />
+                        <line x1={ex.x} y1={ex.y - 20} x2={ex.x} y2={ex.y - 45} stroke="#4f46e5" strokeWidth="2" />
                         <circle cx={ex.x} cy={ex.y - 45} r={8} className="fill-white stroke-indigo-600 stroke-2 group-hover/rotate:fill-indigo-100" />
                         <RotateIcon x={ex.x - 5} y={ex.y - 50} size={10} className="text-indigo-600 pointer-events-none" />
                      </g>
