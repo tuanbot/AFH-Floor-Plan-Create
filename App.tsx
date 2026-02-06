@@ -271,7 +271,10 @@ const App: React.FC = () => {
          if (updatedList.length > 0) {
             handleLoadProject(updatedList[0]);
          } else {
-            setState(createInitialState());
+             // Create a truly fresh state with a unique ID to ensure re-render
+             const freshState = createInitialState();
+             freshState.projectId = `id-new-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            setState(freshState);
          }
       }
     }
@@ -762,21 +765,29 @@ const App: React.FC = () => {
           {/* Tabs Container */}
           <div className="flex-1 flex items-center gap-1 overflow-x-auto no-scrollbar mr-6">
             {tabs.map(tab => (
-              <button 
+              <div 
                 key={tab.id}
                 onClick={() => handleSwitchProject(tab)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer group flex-shrink-0
                    ${tab.id === state.projectId 
                       ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-sm' 
                       : 'text-slate-500 hover:bg-slate-100 border border-transparent hover:border-slate-200'}`}
               >
                  <FileText size={14} className={tab.id === state.projectId ? 'text-indigo-600' : 'text-slate-400'}/>
-                 {tab.name || 'Untitled'}
-              </button>
+                 <span className="max-w-[120px] truncate">{tab.name || 'Untitled'}</span>
+                 
+                 <button
+                    onClick={(e) => handleDeleteProject(tab.id, e)}
+                    className={`p-0.5 rounded-md hover:bg-red-100 hover:text-red-600 transition-all ${tab.id === state.projectId ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                    title="Delete Project"
+                 >
+                    <X size={12} />
+                 </button>
+              </div>
             ))}
             <button 
               onClick={handleNewProject}
-              className="p-1.5 rounded-lg bg-slate-100 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all ml-1"
+              className="p-1.5 rounded-lg bg-slate-100 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all ml-1 flex-shrink-0"
               title="New Project"
             >
               <Plus size={16}/>
