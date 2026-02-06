@@ -56,7 +56,8 @@ import {
   RefreshCcw,
   Undo,
   Redo,
-  Clipboard
+  Clipboard,
+  BrickWall
 } from 'lucide-react';
 import { Room, ExitPoint, HouseFeature, HouseDetails, AppState, SafetyRoute, RoutePoint, SavedProject } from './types';
 import { analyzeSafetyPlan, convertSketchToDiagram } from './geminiService';
@@ -595,7 +596,8 @@ const App: React.FC = () => {
       driveway: { w: 100, h: 300 }, hallway: { w: 40, h: 200 }, pantry: { w: 40, h: 40 }, 
       linen: { w: 40, h: 20 }, 'kitchen-island': { w: 100, h: 50 }, fridge: { w: 40, h: 40 }, 
       dishwasher: { w: 30, h: 30 }, range: { w: 40, h: 40 }, 'washer-dryer': { w: 60, h: 35 }, 
-      'water-heater': { w: 30, h: 30 }, 'elec-panel': { w: 30, h: 10 }, fireplace: { w: 80, h: 30 }
+      'water-heater': { w: 30, h: 30 }, 'elec-panel': { w: 30, h: 10 }, fireplace: { w: 80, h: 30 },
+      wall: { w: 200, h: 10 }
     }[type];
     const newFeature: HouseFeature = {
       id: `feature-${Date.now()}`, type, x: 250, y: 250, width: dimensions.w, height: dimensions.h, 
@@ -923,6 +925,9 @@ const App: React.FC = () => {
                 <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b pb-1">Architecture</h2>
                 <div className="grid grid-cols-3 gap-2">
                   <button onClick={addRoom} className={sidebarButtonClass}><Plus size={14}/> Room</button>
+                  <button onClick={() => addFeature('wall')} className={sidebarButtonClass}><BrickWall size={14}/> Wall</button>
+                  <button onClick={() => addFeature('garden')} className={sidebarButtonClass}><TreePine size={14}/> Garden</button>
+                  <button onClick={() => addFeature('driveway')} className={sidebarButtonClass}><Car size={14}/> Driveway</button>
                   <button onClick={() => addFeature('door')} className={sidebarButtonClass}><DoorOpen size={14}/> Door</button>
                   <button onClick={() => addFeature('sliding-door')} className={sidebarButtonClass}><DoorOpen size={14}/> Sliding</button>
                   <button onClick={() => addFeature('window')} className={sidebarButtonClass}><Maximize size={14}/> Window</button>
@@ -1237,6 +1242,25 @@ const App: React.FC = () => {
                       <line x1={0} y1={f.height/2} x2={f.width} y2={f.height/2} stroke="#000" strokeWidth="1" />
                     </g>
                   )}
+                  {f.type === 'wall' && (
+                    <rect width={f.width} height={f.height} fill="#1e293b" stroke="#000" strokeWidth="1" rx={0.5} />
+                  )}
+                  {f.type === 'garden' && (
+                    <g>
+                      <rect width={f.width} height={f.height} fill="#ecfccb" stroke="#4d7c0f" strokeWidth="2" rx={8} />
+                      <circle cx={f.width * 0.2} cy={f.height * 0.2} r={f.width * 0.1} fill="#84cc16" opacity="0.3" />
+                      <circle cx={f.width * 0.8} cy={f.height * 0.7} r={f.width * 0.15} fill="#84cc16" opacity="0.3" />
+                      <circle cx={f.width * 0.4} cy={f.height * 0.6} r={f.width * 0.08} fill="#84cc16" opacity="0.3" />
+                    </g>
+                  )}
+                  {f.type === 'driveway' && (
+                    <g>
+                      <rect width={f.width} height={f.height} fill="#f1f5f9" stroke="#475569" strokeWidth="2" />
+                      <line x1={f.width * 0.1} y1={0} x2={f.width * 0.1} y2={f.height} stroke="#cbd5e1" strokeWidth="2" />
+                      <line x1={f.width * 0.9} y1={0} x2={f.width * 0.9} y2={f.height} stroke="#cbd5e1" strokeWidth="2" />
+                      <line x1={f.width * 0.5} y1={0} x2={f.width * 0.5} y2={f.height} stroke="#cbd5e1" strokeWidth="2" strokeDasharray="20 10" />
+                    </g>
+                  )}
                   {f.type === 'stairs' && (
                     <g>
                       <rect width={f.width} height={f.height} fill="#f8fafc" stroke="#000" strokeWidth="2" />
@@ -1385,7 +1409,7 @@ const App: React.FC = () => {
                       </g>
                   )}
                   {/* Fallback for others */}
-                  {!['door', 'sliding-door', 'window', 'stairs', 'toilet', 'single-bed', 'double-bed', 'sink-single', 'sink-double', 'bathtub', 'shower', 'sofa', 'table', 'range', 'fridge', 'closet-double', 'closet-unit', 'washer-dryer', 'fireplace', 'vanity-single', 'vanity-double', 'desk', 'water-heater'].includes(f.type) && (
+                  {!['door', 'sliding-door', 'window', 'stairs', 'toilet', 'single-bed', 'double-bed', 'sink-single', 'sink-double', 'bathtub', 'shower', 'sofa', 'table', 'range', 'fridge', 'closet-double', 'closet-unit', 'washer-dryer', 'fireplace', 'vanity-single', 'vanity-double', 'desk', 'water-heater', 'wall', 'garden', 'driveway'].includes(f.type) && (
                      <rect width={f.width} height={f.height} fill="white" stroke="#000" strokeWidth="2" rx={2}/>
                   )}
 

@@ -24,7 +24,7 @@ export type HouseFeature = {
     | 'vanity-single' | 'vanity-double' | 'toilet' | 'sofa' | 'table' | 'desk' 
     | 'balcony' | 'entry' | 'garden' | 'driveway' | 'hallway' | 'pantry' | 'linen' 
     | 'kitchen-island' | 'fridge' | 'dishwasher' | 'range' | 'washer-dryer' 
-    | 'water-heater' | 'elec-panel' | 'fireplace';
+    | 'water-heater' | 'elec-panel' | 'fireplace' | 'wall';
   x: number;
   y: number;
   width: number;
