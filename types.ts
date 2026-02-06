@@ -49,6 +49,8 @@ export type HouseDetails = {
 };
 
 export type AppState = {
+  projectId: string;
+  projectName: string;
   rooms: Room[];
   exits: ExitPoint[];
   features: HouseFeature[];
@@ -58,4 +60,13 @@ export type AppState = {
   selectedId: string | null;
   mode: 'edit' | 'safety' | 'details' | 'route';
   showDimensions: boolean;
+  gridSize: number;
+  snapToGrid: boolean;
+};
+
+export type SavedProject = {
+  id: string;
+  name: string;
+  updatedAt: number;
+  state: AppState;
 };
