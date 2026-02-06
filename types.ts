@@ -62,6 +62,8 @@ export type AppState = {
   showDimensions: boolean;
   gridSize: number;
   snapToGrid: boolean;
+  canvasWidth: number;
+  canvasHeight: number;
 };
 
 export type SavedProject = {

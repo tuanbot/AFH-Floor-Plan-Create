@@ -50,12 +50,13 @@ import {
   MousePointer2,
   ImageOff,
   FileUp,
-  FileDown
+  FileDown,
+  Scaling
 } from 'lucide-react';
 import { Room, ExitPoint, HouseFeature, HouseDetails, AppState, SafetyRoute, RoutePoint, SavedProject } from './types';
 import { analyzeSafetyPlan, convertSketchToDiagram } from './geminiService';
 
-const CANVAS_SIZE = 800;
+const DEFAULT_CANVAS_SIZE = 800;
 const PX_TO_INCH = 0.6;
 
 const generateId = () => `id-${Math.random().toString(36).slice(2, 11)}-${Date.now()}`;
@@ -78,6 +79,8 @@ const createInitialState = (): AppState => ({
   showDimensions: false,
   gridSize: 20,
   snapToGrid: true,
+  canvasWidth: DEFAULT_CANVAS_SIZE,
+  canvasHeight: DEFAULT_CANVAS_SIZE,
 });
 
 const App: React.FC = () => {
@@ -252,6 +255,8 @@ const App: React.FC = () => {
         exits: project.state.exits || [],
         rooms: project.state.rooms || [],
         routes: project.state.routes || [],
+        canvasWidth: project.state.canvasWidth || DEFAULT_CANVAS_SIZE,
+        canvasHeight: project.state.canvasHeight || DEFAULT_CANVAS_SIZE,
       });
       setShowProjectModal(false);
     } catch (e) {
@@ -315,7 +320,11 @@ const App: React.FC = () => {
         if (!parsed.projectId || !parsed.rooms) throw new Error("Invalid project structure");
 
         if (confirm('Load project from file? Unsaved changes will be lost.')) {
-          setState(parsed);
+          setState({
+            ...parsed,
+            canvasWidth: parsed.canvasWidth || DEFAULT_CANVAS_SIZE,
+            canvasHeight: parsed.canvasHeight || DEFAULT_CANVAS_SIZE,
+          });
           setTimeout(() => alert("Project loaded from file."), 50);
         }
       } catch (err) {
@@ -336,8 +345,10 @@ const App: React.FC = () => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     const img = new Image();
-    canvas.width = CANVAS_SIZE;
-    canvas.height = CANVAS_SIZE;
+    const w = state.canvasWidth;
+    const h = state.canvasHeight;
+    canvas.width = w;
+    canvas.height = h;
     const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
     const url = URL.createObjectURL(svgBlob);
     img.onload = () => {
@@ -443,7 +454,7 @@ const App: React.FC = () => {
 
   const addExit = (type: ExitPoint['type']) => {
     const newExit: ExitPoint = {
-      id: `exit-${Date.now()}`, x: CANVAS_SIZE / 2, y: CANVAS_SIZE / 2, type, label: type.split('-').join(' ').toUpperCase()
+      id: `exit-${Date.now()}`, x: state.canvasWidth / 2, y: state.canvasHeight / 2, type, label: type.split('-').join(' ').toUpperCase()
     };
     setState(prev => ({ ...prev, exits: [...prev.exits, newExit], selectedId: newExit.id }));
   };
@@ -535,6 +546,12 @@ const App: React.FC = () => {
 
   const onMouseUp = () => { setDraggingItem(null); setResizingItem(null); };
 
+  const handleCanvasSizeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value;
+    const [w, h] = value.split('x').map(Number);
+    setState(prev => ({ ...prev, canvasWidth: w, canvasHeight: h }));
+  };
+
   const selectedRoom = state.rooms.find(r => r.id === state.selectedId);
   const selectedFeature = state.features.find(f => f.id === state.selectedId);
   const selectedExit = state.exits.find(e => e.id === state.selectedId);
@@ -542,19 +559,13 @@ const App: React.FC = () => {
   const sidebarButtonClass = "flex flex-col items-center justify-center gap-1 p-2 bg-white border border-slate-200 rounded-xl text-[9px] font-bold hover:border-indigo-500 hover:text-indigo-600 transition-all shadow-sm active:scale-95";
 
   // Prepare Tabs Logic
-  // We want to display all saved projects, PLUS the current project if it's not saved yet or modified.
-  // To keep it simple, we construct a "view" of tabs that merges savedProjects with current state.
   const tabs = [...savedProjects];
-  // Check if active project is already in list (by ID)
   const existingIndex = tabs.findIndex(p => p.id === state.projectId);
   if (existingIndex >= 0) {
-    // Update the tab entry with the LIVE state so tab name matches active input
     tabs[existingIndex] = { ...tabs[existingIndex], name: state.projectName, state: state };
   } else {
-    // It's a new unsaved project, add it to the front for display
     tabs.unshift({ id: state.projectId, name: state.projectName, updatedAt: Date.now(), state: state });
   }
-  // Sort by Updated At (descending) so most recent are first
   tabs.sort((a, b) => b.updatedAt - a.updatedAt);
 
   return (
@@ -562,7 +573,7 @@ const App: React.FC = () => {
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
       <input type="file" ref={projectFileInputRef} className="hidden" accept=".json" onChange={handleProjectFileImport} />
 
-      {/* Project Modal (Keep logic but maybe less needed with tabs) */}
+      {/* Project Modal */}
       {showProjectModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
           <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-200">
@@ -810,6 +821,20 @@ const App: React.FC = () => {
 
           <div className="flex items-center gap-2">
             
+            <div className="flex items-center gap-1 mr-2 border border-slate-200 rounded-lg bg-white p-1" title="Canvas Size">
+              <Scaling size={16} className="text-slate-400 ml-1"/>
+              <select 
+                value={`${state.canvasWidth}x${state.canvasHeight}`}
+                onChange={handleCanvasSizeChange}
+                className="text-[10px] font-black bg-transparent outline-none text-slate-600 w-20 text-center cursor-pointer"
+              >
+                <option value="800x800">800x800</option>
+                <option value="1200x800">1200x800</option>
+                <option value="1200x1200">1200x1200</option>
+                <option value="1600x1200">1600x1200</option>
+              </select>
+            </div>
+
             <div className="flex items-center gap-1 mr-2 border border-slate-200 rounded-lg bg-white p-1">
               <button
                 type="button"
@@ -851,10 +876,10 @@ const App: React.FC = () => {
         <div className="flex-1 relative overflow-auto p-12 flex items-start justify-center bg-slate-100 print:bg-white print:p-0">
           <div 
             ref={canvasRef}
-            // Add a key based on project ID to force full re-render on new project
-            key={state.projectId} 
+            // Add a key based on project ID and dimensions to force re-render
+            key={`${state.projectId}-${state.canvasWidth}-${state.canvasHeight}`} 
             className="relative bg-white shadow-2xl rounded-lg border-2 border-slate-300 overflow-hidden print:shadow-none print:border-none"
-            style={{ width: CANVAS_SIZE, height: CANVAS_SIZE, cursor: state.mode === 'route' ? 'crosshair' : 'default' }}
+            style={{ width: state.canvasWidth, height: state.canvasHeight, cursor: state.mode === 'route' ? 'crosshair' : 'default' }}
             onClick={handleCanvasClick}
           >
             {/* Dynamic Grid Background */}
@@ -868,8 +893,8 @@ const App: React.FC = () => {
             
             {state.backgroundUrl && <img src={state.backgroundUrl} className="absolute inset-0 w-full h-full object-contain opacity-20 pointer-events-none grayscale" />}
 
-            <svg ref={svgRef} className="absolute inset-0 w-full h-full" viewBox={`0 0 ${CANVAS_SIZE} ${CANVAS_SIZE}`}>
-              <rect width={CANVAS_SIZE} height={CANVAS_SIZE} fill="white" className="hidden print:block" />
+            <svg ref={svgRef} className="absolute inset-0 w-full h-full" viewBox={`0 0 ${state.canvasWidth} ${state.canvasHeight}`}>
+              <rect width={state.canvasWidth} height={state.canvasHeight} fill="white" className="hidden print:block" />
               
               {state.routes.map(route => (
                 <polyline key={route.id} points={route.points.map(p => `${p.x},${p.y}`).join(' ')} fill="none" stroke="#ef4444" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
