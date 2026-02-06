@@ -9,6 +9,7 @@ import {
   X,
   Loader2,
   RotateCcw,
+  RotateCw,
   DoorOpen,
   Layers,
   Bed,
@@ -51,7 +52,11 @@ import {
   ImageOff,
   FileUp,
   FileDown,
-  Scaling
+  Scaling,
+  RefreshCcw,
+  Undo,
+  Redo,
+  Clipboard
 } from 'lucide-react';
 import { Room, ExitPoint, HouseFeature, HouseDetails, AppState, SafetyRoute, RoutePoint, SavedProject } from './types';
 import { analyzeSafetyPlan, convertSketchToDiagram } from './geminiService';
@@ -86,6 +91,13 @@ const createInitialState = (): AppState => ({
 const App: React.FC = () => {
   // Initialize state using factory function
   const [state, setState] = useState<AppState>(createInitialState);
+  
+  // History Management
+  const [history, setHistory] = useState<AppState[]>([createInitialState()]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+  
+  // Clipboard Management
+  const [clipboard, setClipboard] = useState<{type: 'room'|'feature'|'exit', data: any} | null>(null);
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
@@ -100,6 +112,16 @@ const App: React.FC = () => {
   const projectFileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  
+  // Ref to track state at start of drag for history diffing
+  const dragStartStateRef = useRef<AppState | null>(null);
+
+  useEffect(() => {
+    // Ensure initial history matches initial state if IDs generated differently
+    if (history.length === 1 && history[0].projectId !== state.projectId) {
+       setHistory([state]);
+    }
+  }, [state]);
 
   useEffect(() => {
     try {
@@ -117,6 +139,108 @@ const App: React.FC = () => {
       setSavedProjects([]);
     }
   }, []);
+
+  // --- History Functions ---
+
+  const pushHistory = (newState: AppState) => {
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push(newState);
+    // Limit history size to prevent memory issues
+    if (newHistory.length > 50) newHistory.shift();
+    setHistory(newHistory);
+    setHistoryIndex(newHistory.length - 1);
+  };
+
+  const undo = () => {
+    if (historyIndex > 0) {
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      setState(history[newIndex]);
+    }
+  };
+
+  const redo = () => {
+    if (historyIndex < history.length - 1) {
+      const newIndex = historyIndex + 1;
+      setHistoryIndex(newIndex);
+      setState(history[newIndex]);
+    }
+  };
+
+  // --- Copy / Paste Functions ---
+
+  const handleCopy = () => {
+    if (!state.selectedId) return;
+    const room = state.rooms.find(r => r.id === state.selectedId);
+    if (room) { setClipboard({ type: 'room', data: room }); return; }
+    
+    const feature = state.features.find(f => f.id === state.selectedId);
+    if (feature) { setClipboard({ type: 'feature', data: feature }); return; }
+    
+    const exit = state.exits.find(e => e.id === state.selectedId);
+    if (exit) { setClipboard({ type: 'exit', data: exit }); return; }
+  };
+
+  const handlePaste = () => {
+    if (!clipboard) return;
+    const offset = 20;
+    
+    if (clipboard.type === 'room') {
+       const newRoom = { ...clipboard.data, id: generateId(), x: clipboard.data.x + offset, y: clipboard.data.y + offset, name: `${clipboard.data.name} (Copy)` };
+       setState(prev => {
+          const next = { ...prev, rooms: [...prev.rooms, newRoom], selectedId: newRoom.id };
+          pushHistory(next);
+          return next;
+       });
+    } else if (clipboard.type === 'feature') {
+       const newFeature = { ...clipboard.data, id: generateId(), x: clipboard.data.x + offset, y: clipboard.data.y + offset };
+       setState(prev => {
+          const next = { ...prev, features: [...prev.features, newFeature], selectedId: newFeature.id };
+          pushHistory(next);
+          return next;
+       });
+    } else if (clipboard.type === 'exit') {
+       const newExit = { ...clipboard.data, id: generateId(), x: clipboard.data.x + offset, y: clipboard.data.y + offset };
+       setState(prev => {
+          const next = { ...prev, exits: [...prev.exits, newExit], selectedId: newExit.id };
+          pushHistory(next);
+          return next;
+       });
+    }
+  };
+
+  // --- Keyboard Shortcuts ---
+  
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        if (e.shiftKey) redo();
+        else undo();
+        e.preventDefault();
+      }
+      else if ((e.ctrlKey || e.metaKey) && (e.key === 'y')) {
+        redo();
+        e.preventDefault();
+      }
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        handleCopy();
+        e.preventDefault();
+      }
+      else if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        handlePaste();
+        e.preventDefault();
+      }
+      else if (e.key === 'Delete' || e.key === 'Backspace') {
+         if (state.selectedId) deleteSelected();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [state, historyIndex, history, clipboard]);
+
 
   // Consolidates the current working state into the savedProjects list and persists to localStorage
   const saveCurrentWork = (currentState: AppState, currentSavedList: SavedProject[]) => {
@@ -195,6 +319,7 @@ const App: React.FC = () => {
     };
 
     setState(newState);
+    pushHistory(newState);
 
     const newProject: SavedProject = {
       id,
@@ -222,6 +347,8 @@ const App: React.FC = () => {
     
     // 3. Switch to new state
     setState(freshState);
+    setHistory([freshState]);
+    setHistoryIndex(0);
     
     // 4. Reset UI states
     setDraggingItem(null);
@@ -245,7 +372,7 @@ const App: React.FC = () => {
 
   const handleLoadProject = (project: SavedProject) => {
     try {
-      setState({
+      const newState = {
         ...project.state,
         projectId: project.id,
         projectName: project.name,
@@ -257,7 +384,10 @@ const App: React.FC = () => {
         routes: project.state.routes || [],
         canvasWidth: project.state.canvasWidth || DEFAULT_CANVAS_SIZE,
         canvasHeight: project.state.canvasHeight || DEFAULT_CANVAS_SIZE,
-      });
+      };
+      setState(newState);
+      setHistory([newState]);
+      setHistoryIndex(0);
       setShowProjectModal(false);
     } catch (e) {
       console.error("Load failed", e);
@@ -280,6 +410,8 @@ const App: React.FC = () => {
              const freshState = createInitialState();
              freshState.projectId = `id-new-${Date.now()}-${Math.random().toString(36).slice(2)}`;
             setState(freshState);
+            setHistory([freshState]);
+            setHistoryIndex(0);
          }
       }
     }
@@ -320,11 +452,14 @@ const App: React.FC = () => {
         if (!parsed.projectId || !parsed.rooms) throw new Error("Invalid project structure");
 
         if (confirm('Load project from file? Unsaved changes will be lost.')) {
-          setState({
+          const newState = {
             ...parsed,
             canvasWidth: parsed.canvasWidth || DEFAULT_CANVAS_SIZE,
             canvasHeight: parsed.canvasHeight || DEFAULT_CANVAS_SIZE,
-          });
+          };
+          setState(newState);
+          setHistory([newState]);
+          setHistoryIndex(0);
           setTimeout(() => alert("Project loaded from file."), 50);
         }
       } catch (err) {
@@ -395,7 +530,11 @@ const App: React.FC = () => {
     const reader = new FileReader();
     reader.onload = async (event) => {
       const base64 = event.target?.result as string;
-      setState(prev => ({ ...prev, backgroundUrl: base64 }));
+      setState(prev => {
+         const next = { ...prev, backgroundUrl: base64 };
+         pushHistory(next);
+         return next;
+      });
       if (fileInputRef.current) fileInputRef.current.value = '';
 
       try {
@@ -411,7 +550,11 @@ const App: React.FC = () => {
             height: r.height || 120,
             color: r.color || '#ffffff'
           }));
-          setState(prev => ({ ...prev, rooms: [...prev.rooms, ...roomsWithIds] }));
+          setState(prev => {
+             const next = { ...prev, rooms: [...prev.rooms, ...roomsWithIds] };
+             pushHistory(next);
+             return next;
+          });
         }
       } catch (err) {
         console.error("Conversion failed", err);
@@ -423,13 +566,21 @@ const App: React.FC = () => {
   };
 
   const removeBackground = () => {
-    if(confirm("Remove background image?")) setState(prev => ({ ...prev, backgroundUrl: null }));
+    if(confirm("Remove background image?")) setState(prev => {
+       const next = { ...prev, backgroundUrl: null };
+       pushHistory(next);
+       return next;
+    });
   };
 
   // --- Element Adders ---
   const addRoom = () => {
     const newRoom: Room = { id: `room-${Date.now()}`, name: 'New Room', x: 100, y: 100, width: 160, height: 120, color: '#ffffff' };
-    setState(prev => ({ ...prev, rooms: [...prev.rooms, newRoom], selectedId: newRoom.id }));
+    setState(prev => {
+       const next = { ...prev, rooms: [...prev.rooms, newRoom], selectedId: newRoom.id };
+       pushHistory(next);
+       return next;
+    });
   };
 
   const addFeature = (type: HouseFeature['type']) => {
@@ -450,16 +601,25 @@ const App: React.FC = () => {
       id: `feature-${Date.now()}`, type, x: 250, y: 250, width: dimensions.w, height: dimensions.h, 
       rotation: 0, label: type.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ')
     };
-    setState(prev => ({ ...prev, features: [...prev.features, newFeature], selectedId: newFeature.id }));
+    setState(prev => {
+       const next = { ...prev, features: [...prev.features, newFeature], selectedId: newFeature.id };
+       pushHistory(next);
+       return next;
+    });
   };
 
   const addExit = (type: ExitPoint['type']) => {
     const newExit: ExitPoint = {
       id: `exit-${Date.now()}`, x: state.canvasWidth / 2, y: state.canvasHeight / 2, type, label: type.split('-').join(' ').toUpperCase()
     };
-    setState(prev => ({ ...prev, exits: [...prev.exits, newExit], selectedId: newExit.id }));
+    setState(prev => {
+       const next = { ...prev, exits: [...prev.exits, newExit], selectedId: newExit.id };
+       pushHistory(next);
+       return next;
+    });
   };
 
+  // State update helpers (these do NOT push history automatically, used for Drag/Inputs)
   const updateRoom = (id: string, updates: Partial<Room>) => {
     setState(prev => ({ ...prev, rooms: prev.rooms.map(r => r.id === id ? { ...r, ...updates } : r) }));
   };
@@ -474,14 +634,18 @@ const App: React.FC = () => {
 
   const deleteSelected = () => {
     if (!state.selectedId) return;
-    setState(prev => ({
-      ...prev,
-      rooms: prev.rooms.filter(r => r.id !== prev.selectedId),
-      exits: prev.exits.filter(e => e.id !== prev.selectedId),
-      features: prev.features.filter(f => f.id !== prev.selectedId),
-      routes: prev.routes.filter(r => r.id !== prev.selectedId),
-      selectedId: null
-    }));
+    setState(prev => {
+       const next = {
+         ...prev,
+         rooms: prev.rooms.filter(r => r.id !== prev.selectedId),
+         exits: prev.exits.filter(e => e.id !== prev.selectedId),
+         features: prev.features.filter(f => f.id !== prev.selectedId),
+         routes: prev.routes.filter(r => r.id !== prev.selectedId),
+         selectedId: null
+       };
+       pushHistory(next);
+       return next;
+    });
   };
 
   const startRoute = () => {
@@ -508,7 +672,11 @@ const App: React.FC = () => {
   const finishRoute = () => {
     if (activeRoute && activeRoute.length > 1) {
       const newRoute: SafetyRoute = { id: `route-${Date.now()}`, points: activeRoute, color: '#ef4444' };
-      setState(prev => ({ ...prev, routes: [...prev.routes, newRoute], mode: 'safety' }));
+      setState(prev => {
+         const next = { ...prev, routes: [...prev.routes, newRoute], mode: 'safety' };
+         pushHistory(next);
+         return next;
+      });
     }
     setActiveRoute(null);
   };
@@ -516,6 +684,10 @@ const App: React.FC = () => {
   const onMouseDown = (e: React.MouseEvent, type: 'room' | 'exit' | 'feature' | 'resize' | 'route', id: string) => {
     if (state.mode === 'route') return;
     e.stopPropagation();
+    
+    // Capture state before drag starts for history diffing
+    dragStartStateRef.current = state;
+
     setState(prev => ({ ...prev, selectedId: id }));
     if (type === 'resize') {
       const item = state.rooms.find(r => r.id === id) || state.features.find(f => f.id === id);
@@ -545,12 +717,93 @@ const App: React.FC = () => {
     }
   };
 
-  const onMouseUp = () => { setDraggingItem(null); setResizingItem(null); };
+  const onMouseUp = () => { 
+    setDraggingItem(null); 
+    setResizingItem(null);
+    
+    // Check if drag resulted in a state change
+    if (dragStartStateRef.current && dragStartStateRef.current !== state) {
+       pushHistory(state);
+    }
+    dragStartStateRef.current = null;
+  };
 
   const handleCanvasSizeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     const [w, h] = value.split('x').map(Number);
-    setState(prev => ({ ...prev, canvasWidth: w, canvasHeight: h }));
+    setState(prev => {
+       const next = { ...prev, canvasWidth: w, canvasHeight: h };
+       pushHistory(next);
+       return next;
+    });
+  };
+
+  const handleRotatePlan = () => {
+    if (!confirm("Rotate the entire plan 90 degrees clockwise? This will adjust all items.")) return;
+
+    const cx = state.canvasWidth / 2;
+    const cy = state.canvasHeight / 2;
+
+    const rotatePoint = (x: number, y: number) => {
+      // 90 deg clockwise around cx, cy
+      // nx = -(y - cy) + cx
+      // ny = (x - cx) + cy
+      return {
+        x: -(y - cy) + cx,
+        y: (x - cx) + cy
+      };
+    };
+
+    setState(prev => {
+       const newRooms = prev.rooms.map(room => {
+          // Center of room
+          const rcx = room.x + room.width / 2;
+          const rcy = room.y + room.height / 2;
+          const newCenter = rotatePoint(rcx, rcy);
+          return {
+             ...room,
+             width: room.height,
+             height: room.width,
+             x: newCenter.x - room.height / 2,
+             y: newCenter.y - room.width / 2
+          };
+       });
+
+       const newFeatures = prev.features.map(f => {
+          const fcx = f.x + f.width / 2;
+          const fcy = f.y + f.height / 2;
+          const newCenter = rotatePoint(fcx, fcy);
+          return {
+            ...f,
+            // Width/Height stay same because rotation handles visual aspect
+            rotation: (f.rotation + 90) % 360,
+            x: newCenter.x - f.width / 2,
+            y: newCenter.y - f.height / 2
+          };
+       });
+
+       const newExits = prev.exits.map(e => {
+          const newPos = rotatePoint(e.x, e.y);
+          return { ...e, x: newPos.x, y: newPos.y };
+       });
+       
+       const newRoutes = prev.routes.map(r => ({
+          ...r,
+          points: r.points.map(p => rotatePoint(p.x, p.y))
+       }));
+
+       const next = {
+         ...prev,
+         canvasWidth: prev.canvasHeight,
+         canvasHeight: prev.canvasWidth,
+         rooms: newRooms,
+         features: newFeatures,
+         exits: newExits,
+         routes: newRoutes
+       };
+       pushHistory(next);
+       return next;
+    });
   };
 
   const selectedRoom = state.rooms.find(r => r.id === state.selectedId);
@@ -625,6 +878,7 @@ const App: React.FC = () => {
                   type="text" 
                   value={state.projectName} 
                   onChange={(e) => setState(p => ({ ...p, projectName: e.target.value }))}
+                  onBlur={() => pushHistory(state)}
                   className="w-full text-xs font-black p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                   placeholder="Enter Project Name..."
                 />
@@ -746,6 +1000,7 @@ const App: React.FC = () => {
                             else if (selectedFeature) updateFeature(selectedFeature.id, {label: e.target.value});
                             else if (selectedExit) updateExit(selectedExit.id, {label: e.target.value});
                           }}
+                          onBlur={() => pushHistory(state)}
                           className="w-full text-xs p-2.5 bg-white/5 border border-white/10 rounded-lg text-white outline-none focus:ring-1 focus:ring-indigo-400"
                           placeholder="Enter label..."
                         />
@@ -753,7 +1008,25 @@ const App: React.FC = () => {
                     {selectedFeature && (
                       <div className="space-y-1">
                         <label className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Rotation</label>
-                        <input type="range" min="0" max="360" step="45" value={selectedFeature.rotation} onChange={e => updateFeature(selectedFeature.id, {rotation: Number(e.target.value)})} className="w-full accent-indigo-500 cursor-pointer"/>
+                        <div className="flex items-center gap-2">
+                           <button onClick={() => {
+                             const newState = {...state, features: state.features.map(f => f.id === selectedFeature.id ? { ...f, rotation: (f.rotation - 90 + 360) % 360 } : f)};
+                             setState(newState);
+                             pushHistory(newState);
+                           }} className="p-2 bg-white/10 rounded-lg text-white hover:bg-indigo-500 transition-colors"><RotateCcw size={14}/></button>
+                           
+                           <input type="range" min="0" max="360" step="45" value={selectedFeature.rotation} 
+                             onChange={e => updateFeature(selectedFeature.id, {rotation: Number(e.target.value)})}
+                             onMouseUp={() => pushHistory(state)}
+                             className="flex-1 accent-indigo-500 cursor-pointer"
+                           />
+                           
+                           <button onClick={() => {
+                             const newState = {...state, features: state.features.map(f => f.id === selectedFeature.id ? { ...f, rotation: (f.rotation + 90) % 360 } : f)};
+                             setState(newState);
+                             pushHistory(newState);
+                           }} className="p-2 bg-white/10 rounded-lg text-white hover:bg-indigo-500 transition-colors"><RotateCw size={14}/></button>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -821,6 +1094,23 @@ const App: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+
+             {/* Undo/Redo/Copy/Paste */}
+             <div className="flex items-center gap-0.5 mr-2 border border-slate-200 rounded-lg bg-white p-1">
+               <button onClick={undo} disabled={historyIndex <= 0} className={`p-1.5 rounded-md transition-all ${historyIndex > 0 ? 'text-slate-600 hover:bg-slate-100' : 'text-slate-300'}`} title="Undo (Ctrl+Z)">
+                 <Undo size={14} />
+               </button>
+               <button onClick={redo} disabled={historyIndex >= history.length - 1} className={`p-1.5 rounded-md transition-all ${historyIndex < history.length - 1 ? 'text-slate-600 hover:bg-slate-100' : 'text-slate-300'}`} title="Redo (Ctrl+Y)">
+                 <Redo size={14} />
+               </button>
+               <div className="w-px h-4 bg-slate-200 mx-1"></div>
+               <button onClick={handleCopy} disabled={!state.selectedId} className={`p-1.5 rounded-md transition-all ${state.selectedId ? 'text-slate-600 hover:bg-slate-100' : 'text-slate-300'}`} title="Copy (Ctrl+C)">
+                 <Copy size={14} />
+               </button>
+               <button onClick={handlePaste} disabled={!clipboard} className={`p-1.5 rounded-md transition-all ${clipboard ? 'text-slate-600 hover:bg-slate-100' : 'text-slate-300'}`} title="Paste (Ctrl+V)">
+                 <Clipboard size={14} />
+               </button>
+             </div>
             
             <div className="flex items-center gap-1 mr-2 border border-slate-200 rounded-lg bg-white p-1" title="Canvas Size">
               <Scaling size={16} className="text-slate-400 ml-1"/>
@@ -835,6 +1125,10 @@ const App: React.FC = () => {
                 <option value="1600x1200">1600x1200</option>
               </select>
             </div>
+
+            <button type="button" onClick={handleRotatePlan} className="p-2 mr-2 bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-indigo-600 hover:border-indigo-400 transition-all" title="Rotate Plan 90°">
+              <RefreshCcw size={16}/>
+            </button>
 
             <div className="flex items-center gap-1 mr-2 border border-slate-200 rounded-lg bg-white p-1">
               <button
