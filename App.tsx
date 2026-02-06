@@ -456,6 +456,10 @@ const App: React.FC = () => {
     setState(prev => ({ ...prev, features: prev.features.map(f => f.id === id ? { ...f, ...updates } : f) }));
   };
 
+  const updateExit = (id: string, updates: Partial<ExitPoint>) => {
+    setState(prev => ({ ...prev, exits: prev.exits.map(e => e.id === id ? { ...e, ...updates } : e) }));
+  };
+
   const deleteSelected = () => {
     if (!state.selectedId) return;
     setState(prev => ({
@@ -533,6 +537,8 @@ const App: React.FC = () => {
 
   const selectedRoom = state.rooms.find(r => r.id === state.selectedId);
   const selectedFeature = state.features.find(f => f.id === state.selectedId);
+  const selectedExit = state.exits.find(e => e.id === state.selectedId);
+  
   const sidebarButtonClass = "flex flex-col items-center justify-center gap-1 p-2 bg-white border border-slate-200 rounded-xl text-[9px] font-bold hover:border-indigo-500 hover:text-indigo-600 transition-all shadow-sm active:scale-95";
 
   // Prepare Tabs Logic
@@ -713,17 +719,25 @@ const App: React.FC = () => {
                 </button>
               )}
 
-              {(selectedRoom || selectedFeature) && (
+              {(selectedRoom || selectedFeature || selectedExit) && (
                 <div className="p-4 bg-slate-900 rounded-2xl space-y-4 shadow-xl animate-in zoom-in-95">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Settings</span>
                     <button type="button" onClick={deleteSelected} className="text-red-400 hover:text-red-300 p-1 hover:bg-white/10 rounded-lg"><Trash2 size={16}/></button>
                   </div>
                   <div className="space-y-3">
-                    <input type="text" value={selectedRoom?.name || selectedFeature?.label || ''} 
-                      onChange={e => selectedRoom ? updateRoom(selectedRoom.id, {name: e.target.value}) : updateFeature(selectedFeature!.id, {label: e.target.value})}
-                      className="w-full text-xs p-2.5 bg-white/5 border border-white/10 rounded-lg text-white outline-none focus:ring-1 focus:ring-indigo-400"
-                    />
+                    <div className="space-y-1">
+                        <label className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Label / Name</label>
+                        <input type="text" value={selectedRoom?.name || selectedFeature?.label || selectedExit?.label || ''} 
+                          onChange={e => {
+                            if (selectedRoom) updateRoom(selectedRoom.id, {name: e.target.value});
+                            else if (selectedFeature) updateFeature(selectedFeature.id, {label: e.target.value});
+                            else if (selectedExit) updateExit(selectedExit.id, {label: e.target.value});
+                          }}
+                          className="w-full text-xs p-2.5 bg-white/5 border border-white/10 rounded-lg text-white outline-none focus:ring-1 focus:ring-indigo-400"
+                          placeholder="Enter label..."
+                        />
+                    </div>
                     {selectedFeature && (
                       <div className="space-y-1">
                         <label className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Rotation</label>
