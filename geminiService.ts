@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Room, ExitPoint, HouseDetails } from "./types";
 
@@ -33,14 +32,14 @@ export const analyzeSafetyPlan = async (rooms: Room[], exits: ExitPoint[], detai
   }
 };
 
-export const convertSketchToDiagram = async (base64Image: string): Promise<Partial<Room>[]> => {
+export const convertSketchToDiagram = async (base64Image: string, canvasWidth: number = 800, canvasHeight: number = 800): Promise<Partial<Room>[]> => {
   const prompt = `
-    Analyze this hand-drawn floor plan sketch. 
+    Analyze this floor plan image (hand-drawn sketch, digital screenshot, or blueprint). 
     Identify all rooms and areas. 
     Estimate their names (e.g., Kitchen, Master Bedroom, Hallway, Garden, Balcony).
-    Estimate their dimensions in feet (10-20ft range typically).
-    Provide coordinates (x, y) and dimensions (width, height) relative to an 800x800 canvas.
-    Assume the sketch covers the majority of the canvas.
+    Estimate their dimensions.
+    Provide coordinates (x, y) and dimensions (width, height) relative to a ${canvasWidth}x${canvasHeight} canvas.
+    The output must accurately reflect the relative layout and proportions seen in the image within the given canvas size.
     Return only the room layout as JSON.
   `;
 

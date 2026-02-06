@@ -399,7 +399,8 @@ const App: React.FC = () => {
       if (fileInputRef.current) fileInputRef.current.value = '';
 
       try {
-        const newRooms = await convertSketchToDiagram(base64);
+        // Pass current canvas dimensions so the AI scales the layout correctly
+        const newRooms = await convertSketchToDiagram(base64, state.canvasWidth, state.canvasHeight);
         if (newRooms.length > 0) {
           const roomsWithIds: Room[] = newRooms.map((r, i) => ({
             id: `ai-room-${Date.now()}-${i}`,
@@ -721,7 +722,7 @@ const App: React.FC = () => {
 
               <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isConverting} className="w-full flex items-center justify-center gap-2 p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-[10px] font-black text-indigo-700 hover:bg-indigo-100 shadow-sm transition-all active:scale-95">
                 {isConverting ? <Loader2 size={16} className="animate-spin"/> : <Upload size={16}/>}
-                {isConverting ? 'CONVERTING...' : 'IMPORT HAND-DRAWN SKETCH'}
+                {isConverting ? 'ANALYZING...' : 'IMPORT IMAGE / SCREENSHOT'}
               </button>
 
               {state.backgroundUrl && (
