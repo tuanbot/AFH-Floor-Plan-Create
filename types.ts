@@ -7,6 +7,9 @@ export type Room = {
   height: number;
   color: string;
   rotation: number;
+  labelX?: number;
+  labelY?: number;
+  fontSize?: number;
 };
 
 export type ExitPoint = {
@@ -16,6 +19,9 @@ export type ExitPoint = {
   type: 'primary' | 'secondary' | 'extinguisher' | 'first-aid' | 'fire-alarm';
   label: string;
   rotation: number;
+  labelX?: number;
+  labelY?: number;
+  fontSize?: number;
 };
 
 export type HouseFeature = {
@@ -34,6 +40,9 @@ export type HouseFeature = {
   height: number;
   rotation: number;
   label: string;
+  labelX?: number;
+  labelY?: number;
+  fontSize?: number;
 };
 
 export type RoutePoint = { x: number; y: number };

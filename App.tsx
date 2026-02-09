@@ -59,7 +59,10 @@ import {
   Clipboard,
   BrickWall,
   RotateCw as RotateIcon,
-  Type
+  Type,
+  AlignCenter,
+  RotateCcw as ResetIcon,
+  Minus
 } from 'lucide-react';
 import { Room, ExitPoint, HouseFeature, HouseDetails, AppState, SafetyRoute, RoutePoint, SavedProject } from './types';
 import { analyzeSafetyPlan, convertSketchToDiagram } from './geminiService';
@@ -108,6 +111,7 @@ const App: React.FC = () => {
   const [draggingItem, setDraggingItem] = useState<{ id: string, offsetX: number, offsetY: number } | null>(null);
   const [resizingItem, setResizingItem] = useState<{ id: string, startX: number, startY: number, startW: number, startH: number, rotation: number } | null>(null);
   const [rotatingItem, setRotatingItem] = useState<{ id: string, startAngle: number, startRotation: number, cx: number, cy: number } | null>(null);
+  const [movingLabel, setMovingLabel] = useState<{ id: string, startX: number, startY: number, startLabelX: number, startLabelY: number, rotation: number } | null>(null);
   const [activeRoute, setActiveRoute] = useState<RoutePoint[] | null>(null);
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
@@ -358,6 +362,7 @@ const App: React.FC = () => {
     setDraggingItem(null);
     setResizingItem(null);
     setRotatingItem(null);
+    setMovingLabel(null);
     setActiveRoute(null);
     setAnalysisResult(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -688,7 +693,7 @@ const App: React.FC = () => {
     setActiveRoute(null);
   };
 
-  const onMouseDown = (e: React.MouseEvent, type: 'room' | 'exit' | 'feature' | 'resize' | 'rotate' | 'route', id: string) => {
+  const onMouseDown = (e: React.MouseEvent, type: 'room' | 'exit' | 'feature' | 'resize' | 'rotate' | 'route' | 'label_move', id: string) => {
     if (state.mode === 'route') return;
     e.stopPropagation();
     
@@ -697,11 +702,19 @@ const App: React.FC = () => {
 
     setState(prev => ({ ...prev, selectedId: id }));
     
-    if (type === 'rotate') {
-      const item = [...state.rooms, ...state.exits, ...state.features].find(i => i.id === id);
-      if (item) {
+    const item = [...state.rooms, ...state.exits, ...state.features].find(i => i.id === id);
+
+    if (type === 'label_move' && item) {
+       setMovingLabel({ 
+         id, 
+         startX: e.clientX, 
+         startY: e.clientY, 
+         startLabelX: item.labelX || 0, 
+         startLabelY: item.labelY || 0,
+         rotation: item.rotation || 0
+       });
+    } else if (type === 'rotate' && item) {
         let cx, cy;
-        // Determine center based on type
         const room = state.rooms.find(r => r.id === id);
         const feature = state.features.find(f => f.id === id);
         const exit = state.exits.find(e => e.id === id);
@@ -719,27 +732,45 @@ const App: React.FC = () => {
            return;
         }
         
-        // Calculate initial mouse angle relative to center
         const startAngle = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
         setRotatingItem({ id, startAngle, startRotation: item.rotation || 0, cx, cy });
-      }
-    } else if (type === 'resize') {
-      const item = state.rooms.find(r => r.id === id) || state.features.find(f => f.id === id);
-      if (item) setResizingItem({ id, startX: e.clientX, startY: e.clientY, startW: item.width, startH: item.height, rotation: item.rotation || 0 });
+    } else if (type === 'resize' && item) {
+      // Logic for feature/room resize
+      const feature = state.features.find(f => f.id === id);
+      const room = state.rooms.find(r => r.id === id);
+      const w = room ? room.width : (feature ? feature.width : 0);
+      const h = room ? room.height : (feature ? feature.height : 0);
+      setResizingItem({ id, startX: e.clientX, startY: e.clientY, startW: w, startH: h, rotation: item.rotation || 0 });
     } else if (type !== 'route') {
-      const item = [...state.rooms, ...state.exits, ...state.features].find(i => i.id === id);
-      if (item) setDraggingItem({ id, offsetX: e.clientX - item.x, offsetY: e.clientY - item.y });
+      const it = [...state.rooms, ...state.exits, ...state.features].find(i => i.id === id);
+      if (it) setDraggingItem({ id, offsetX: e.clientX - it.x, offsetY: e.clientY - it.y });
     }
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
-    if (rotatingItem) {
+    if (movingLabel) {
+      const dx = e.clientX - movingLabel.startX;
+      const dy = e.clientY - movingLabel.startY;
+      
+      // Rotate delta to match item's local coordinate system
+      // Rotation is clockwise in SVG/CSS, so we rotate counter-clockwise to find local delta
+      const rad = -movingLabel.rotation * Math.PI / 180;
+      const localDx = dx * Math.cos(rad) - dy * Math.sin(rad);
+      const localDy = dx * Math.sin(rad) + dy * Math.cos(rad);
+
+      const newLabelX = movingLabel.startLabelX + localDx;
+      const newLabelY = movingLabel.startLabelY + localDy;
+
+      if (state.rooms.some(r => r.id === movingLabel.id)) updateRoom(movingLabel.id, { labelX: newLabelX, labelY: newLabelY });
+      else if (state.features.some(f => f.id === movingLabel.id)) updateFeature(movingLabel.id, { labelX: newLabelX, labelY: newLabelY });
+      else updateExit(movingLabel.id, { labelX: newLabelX, labelY: newLabelY });
+
+    } else if (rotatingItem) {
       const { cx, cy, startAngle, startRotation } = rotatingItem;
       const currentAngle = Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI;
       const delta = currentAngle - startAngle;
       let newRotation = (startRotation + delta + 360) % 360;
       
-      // Snap to 45 degree increments if Shift is held (optional, but good UX)
       if (e.shiftKey) {
         newRotation = Math.round(newRotation / 45) * 45;
       }
@@ -755,8 +786,6 @@ const App: React.FC = () => {
       else if (state.features.some(f => f.id === draggingItem.id)) updateFeature(draggingItem.id, { x: nx, y: ny });
       else setState(prev => ({ ...prev, exits: prev.exits.map(ex => ex.id === draggingItem.id ? { ...ex, x: nx, y: ny } : ex) }));
     } else if (resizingItem) {
-      // Basic resizing logic - does not fully account for rotation projection
-      // For simple 90deg rotations, it might be unintuitive without projection math, but functional.
       const dw = e.clientX - resizingItem.startX;
       const dh = e.clientY - resizingItem.startY;
       
@@ -775,6 +804,7 @@ const App: React.FC = () => {
     setDraggingItem(null); 
     setResizingItem(null);
     setRotatingItem(null);
+    setMovingLabel(null);
     
     // Check if drag resulted in a state change
     if (dragStartStateRef.current && dragStartStateRef.current !== state) {
@@ -1080,6 +1110,75 @@ const App: React.FC = () => {
                           placeholder="Enter label..."
                         />
                     </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Font Size</label>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => {
+                            const delta = -1;
+                            if (selectedRoom) updateRoom(selectedRoom.id, { fontSize: Math.max(6, (selectedRoom.fontSize || 9) + delta) });
+                            else if (selectedExit) updateExit(selectedExit.id, { fontSize: Math.max(6, (selectedExit.fontSize || 9) + delta) });
+                            else if (selectedFeature) {
+                                let current = selectedFeature.fontSize;
+                                if (!current) {
+                                     // Calculate default to start from if not set
+                                     if (selectedFeature.type === 'label') current = Math.max(12, selectedFeature.height * 0.6);
+                                     else current = 8;
+                                }
+                                updateFeature(selectedFeature.id, { fontSize: Math.max(6, Math.round(current + delta)) });
+                            }
+                            pushHistory(state);
+                        }} className="p-2 bg-white/10 rounded-lg text-white hover:bg-indigo-500 transition-colors"><Minus size={14}/></button>
+                        
+                        <div className="flex-1 text-center font-bold text-white text-xs py-2 bg-white/5 rounded-lg">
+                           {(selectedRoom?.fontSize || selectedFeature?.fontSize || selectedExit?.fontSize || 'Auto')} px
+                        </div>
+
+                        <button onClick={() => {
+                            const delta = 1;
+                            if (selectedRoom) updateRoom(selectedRoom.id, { fontSize: Math.max(6, (selectedRoom.fontSize || 9) + delta) });
+                            else if (selectedExit) updateExit(selectedExit.id, { fontSize: Math.max(6, (selectedExit.fontSize || 9) + delta) });
+                            else if (selectedFeature) {
+                                let current = selectedFeature.fontSize;
+                                if (!current) {
+                                     if (selectedFeature.type === 'label') current = Math.max(12, selectedFeature.height * 0.6);
+                                     else current = 8;
+                                }
+                                updateFeature(selectedFeature.id, { fontSize: Math.max(6, Math.round(current + delta)) });
+                            }
+                            pushHistory(state);
+                        }} className="p-2 bg-white/10 rounded-lg text-white hover:bg-indigo-500 transition-colors"><Plus size={14}/></button>
+
+                        <button onClick={() => {
+                            if (selectedRoom) updateRoom(selectedRoom.id, { fontSize: undefined });
+                            else if (selectedFeature) updateFeature(selectedFeature.id, { fontSize: undefined });
+                            else if (selectedExit) updateExit(selectedExit.id, { fontSize: undefined });
+                            pushHistory(state);
+                        }} className="p-2 bg-white/10 rounded-lg text-white hover:bg-indigo-500 transition-colors" title="Reset Font Size"><ResetIcon size={14}/></button>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Label Position</label>
+                      <div className="grid grid-cols-2 gap-2">
+                         <button type="button" onClick={() => {
+                            if (selectedRoom) updateRoom(selectedRoom.id, { labelX: 0, labelY: 0 });
+                            else if (selectedFeature) updateFeature(selectedFeature.id, { labelX: 0, labelY: 0 });
+                            else if (selectedExit) updateExit(selectedExit.id, { labelX: 0, labelY: 0 });
+                            pushHistory(state);
+                         }} className="flex items-center justify-center gap-2 p-2 bg-white/10 rounded-lg text-xs font-bold text-white hover:bg-indigo-500 transition-colors">
+                            <ResetIcon size={12}/> Reset Pos
+                         </button>
+                         <button type="button" onClick={() => {
+                            if (selectedRoom) updateRoom(selectedRoom.id, { labelX: selectedRoom.width/2 - 8, labelY: selectedRoom.height/2 - 18 });
+                            else if (selectedFeature) updateFeature(selectedFeature.id, { labelX: 0, labelY: -(selectedFeature.height/2 + 11) });
+                            else if (selectedExit) updateExit(selectedExit.id, { labelX: 0, labelY: -28 });
+                            pushHistory(state);
+                         }} className="flex items-center justify-center gap-2 p-2 bg-white/10 rounded-lg text-xs font-bold text-white hover:bg-indigo-500 transition-colors">
+                            <AlignCenter size={12}/> Center
+                         </button>
+                      </div>
+                    </div>
                     
                     {/* Rotation Control for All Types */}
                     <div className="space-y-1">
@@ -1276,7 +1375,7 @@ const App: React.FC = () => {
                     onClick={e => e.stopPropagation()}
                 >
                   <rect x={room.x} y={room.y} width={room.width} height={room.height} fill="white" stroke={state.selectedId === room.id ? '#4f46e5' : '#000'} strokeWidth={state.selectedId === room.id ? 4 : 2} className="cursor-move" />
-                  <text x={room.x + 8} y={room.y + 18} className="font-black text-[9px] fill-slate-800 uppercase pointer-events-none tracking-widest">{room.name}</text>
+                  <text x={room.x + 8 + (room.labelX || 0)} y={room.y + 18 + (room.labelY || 0)} className="font-black fill-slate-800 uppercase pointer-events-none tracking-widest" style={{ fontSize: room.fontSize || 9 }}>{room.name}</text>
                   
                   {/* Dimensions - rotate them back so they are readable? Or keep with room. */}
                   {state.showDimensions && (
@@ -1288,6 +1387,9 @@ const App: React.FC = () => {
                   
                   {state.selectedId === room.id && (
                      <>
+                        {/* Label Move Handle */}
+                        <circle cx={room.x + 8 + (room.labelX || 0) - 6} cy={room.y + 18 + (room.labelY || 0) - 3} r={3} fill="#f59e0b" className="cursor-move print:hidden" onMouseDown={e => onMouseDown(e, 'label_move', room.id)} />
+                        
                         {/* Resize Handle */}
                         <circle cx={room.x + room.width} cy={room.y + room.height} r={8} className="fill-indigo-600 cursor-nwse-resize stroke-white stroke-2 print:hidden" onMouseDown={e => onMouseDown(e, 'resize', room.id)} />
                         {/* Rotation Handle - Top Center */}
@@ -1494,15 +1596,18 @@ const App: React.FC = () => {
                     <g>
                       <rect width={f.width} height={f.height} fill="transparent" stroke={state.selectedId === f.id ? "#4f46e5" : "none"} strokeWidth="1" strokeDasharray="4 2" />
                       <text 
-                        x={f.width/2} 
-                        y={f.height/2} 
+                        x={f.width/2 + (f.labelX || 0)} 
+                        y={f.height/2 + (f.labelY || 0)} 
                         dominantBaseline="middle" 
                         textAnchor="middle" 
                         className="font-bold fill-slate-900 pointer-events-none"
-                        style={{ fontSize: Math.max(12, f.height * 0.6) }}
+                        style={{ fontSize: f.fontSize || Math.max(12, f.height * 0.6) }}
                       >
                         {f.label}
                       </text>
+                      {state.selectedId === f.id && (
+                        <circle cx={f.width/2 + (f.labelX || 0) + 6} cy={f.height/2 + (f.labelY || 0) - 6} r={3} fill="#f59e0b" className="cursor-move print:hidden" onMouseDown={e => onMouseDown(e, 'label_move', f.id)} />
+                      )}
                     </g>
                   )}
                   {/* Fallback for others */}
@@ -1511,7 +1616,12 @@ const App: React.FC = () => {
                   )}
                    {/* Fallback label */}
                    {f.type !== 'label' && (
-                     <text x={f.width/2} y={f.height + 11} textAnchor="middle" className="text-[8px] font-black fill-slate-500 uppercase tracking-tight pointer-events-none">{f.label}</text>
+                     <>
+                      <text x={f.width/2 + (f.labelX || 0)} y={f.height + 11 + (f.labelY || 0)} textAnchor="middle" className="font-black fill-slate-500 uppercase tracking-tight pointer-events-none" style={{ fontSize: f.fontSize || 8 }}>{f.label}</text>
+                      {state.selectedId === f.id && (
+                        <circle cx={f.width/2 + (f.labelX || 0) + 6} cy={f.height + 11 + (f.labelY || 0) - 3} r={3} fill="#f59e0b" className="cursor-move print:hidden" onMouseDown={e => onMouseDown(e, 'label_move', f.id)} />
+                      )}
+                     </>
                    )}
 
                   {state.selectedId === f.id && (
@@ -1542,7 +1652,7 @@ const App: React.FC = () => {
                       <g>
                          <circle cx={ex.x} cy={ex.y} r={18} fill="#22c55e" stroke="white" strokeWidth="2" className="shadow-sm"/>
                          <path d={`M ${ex.x-6},${ex.y} l 12,0 m -4,-4 l 4,4 l -4,4`} fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-                         <text x={ex.x} y={ex.y + 30} textAnchor="middle" className="text-[10px] font-black fill-green-700 uppercase select-none">EXIT</text>
+                         <text x={ex.x} y={ex.y + 30} textAnchor="middle" className="font-black fill-green-700 uppercase select-none" style={{ fontSize: ex.fontSize || 10 }}>EXIT</text>
                       </g>
                    )}
 
@@ -1551,7 +1661,7 @@ const App: React.FC = () => {
                       <g>
                         <rect x={ex.x - 15} y={ex.y - 15} width={30} height={30} rx={6} fill="#22c55e" stroke="white" strokeWidth="2" className="shadow-sm" />
                         <path d={`M ${ex.x-4},${ex.y-10} L ${ex.x+4},${ex.y-10} L ${ex.x+4},${ex.y-4} L ${ex.x+10},${ex.y-4} L ${ex.x+10},${ex.y+4} L ${ex.x+4},${ex.y+4} L ${ex.x+4},${ex.y+10} L ${ex.x-4},${ex.y+10} L ${ex.x-4},${ex.y+4} L ${ex.x-10},${ex.y+4} L ${ex.x-10},${ex.y-4} L ${ex.x-4},${ex.y-4} Z`} fill="white" />
-                        <text x={ex.x} y={ex.y + 28} textAnchor="middle" className="text-[9px] font-black fill-green-700 uppercase drop-shadow-sm select-none">{ex.label}</text>
+                        <text x={ex.x + (ex.labelX || 0)} y={ex.y + 28 + (ex.labelY || 0)} textAnchor="middle" className="font-black fill-green-700 uppercase drop-shadow-sm select-none" style={{ fontSize: ex.fontSize || 9 }}>{ex.label}</text>
                       </g>
                    )}
 
@@ -1561,7 +1671,7 @@ const App: React.FC = () => {
                         <path d={`M ${ex.x-6},${ex.y-10} L ${ex.x+6},${ex.y-10} L ${ex.x+8},${ex.y+15} L ${ex.x-8},${ex.y+15} Z`} fill="#ef4444" stroke="#991b1b" strokeWidth="2" />
                         <rect x={ex.x-3} y={ex.y-14} width={6} height={4} fill="#374151" />
                         <path d={`M ${ex.x+3},${ex.y-12} Q ${ex.x+12},${ex.y-12} ${ex.x+12},${ex.y}`} fill="none" stroke="#1f2937" strokeWidth="2" />
-                        <text x={ex.x} y={ex.y + 28} textAnchor="middle" className="text-[9px] font-black fill-red-700 uppercase drop-shadow-sm select-none">{ex.label}</text>
+                        <text x={ex.x + (ex.labelX || 0)} y={ex.y + 28 + (ex.labelY || 0)} textAnchor="middle" className="font-black fill-red-700 uppercase drop-shadow-sm select-none" style={{ fontSize: ex.fontSize || 9 }}>{ex.label}</text>
                       </g>
                    )}
 
@@ -1573,7 +1683,7 @@ const App: React.FC = () => {
                         <path d={`M ${ex.x-2},${ex.y-6} L ${ex.x-2},${ex.y+4} L ${ex.x+4},${ex.y+4}`} fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" />
                         <path d={`M ${ex.x-18},${ex.y-8} Q ${ex.x-22},${ex.y} ${ex.x-18},${ex.y+8}`} fill="none" stroke="#ef4444" strokeWidth="2" opacity="0.6" />
                         <path d={`M ${ex.x+18},${ex.y-8} Q ${ex.x+22},${ex.y} ${ex.x+18},${ex.y+8}`} fill="none" stroke="#ef4444" strokeWidth="2" opacity="0.6" />
-                        <text x={ex.x} y={ex.y + 28} textAnchor="middle" className="text-[9px] font-black fill-red-700 uppercase drop-shadow-sm select-none">{ex.label}</text>
+                        <text x={ex.x + (ex.labelX || 0)} y={ex.y + 28 + (ex.labelY || 0)} textAnchor="middle" className="font-black fill-red-700 uppercase drop-shadow-sm select-none" style={{ fontSize: ex.fontSize || 9 }}>{ex.label}</text>
                       </g>
                    )}
 
@@ -1582,17 +1692,24 @@ const App: React.FC = () => {
                       <g>
                         <circle cx={ex.x} cy={ex.y} r={18} fill="#fff" stroke="#94a3b8" strokeWidth="2" className="shadow-sm"/>
                         <text x={ex.x} y={ex.y+4} textAnchor="middle" className="text-[10px] font-black fill-slate-500">{ex.type.substring(0,2).toUpperCase()}</text>
-                        <text x={ex.x} y={ex.y + 35} textAnchor="middle" className="text-[10px] font-black fill-slate-900 uppercase pointer-events-none drop-shadow-sm">{ex.label}</text>
+                        <text x={ex.x + (ex.labelX || 0)} y={ex.y + 35 + (ex.labelY || 0)} textAnchor="middle" className="font-black fill-slate-900 uppercase pointer-events-none drop-shadow-sm" style={{ fontSize: ex.fontSize || 10 }}>{ex.label}</text>
                       </g>
                    )}
 
                    {/* Selection and Rotation handles remain the same */}
                    {state.selectedId === ex.id && (
-                     <g className="print:hidden cursor-grab active:cursor-grabbing group/rotate" onMouseDown={e => onMouseDown(e, 'rotate', ex.id)}>
-                        <line x1={ex.x} y1={ex.y - 20} x2={ex.x} y2={ex.y - 45} stroke="#4f46e5" strokeWidth="2" />
-                        <circle cx={ex.x} cy={ex.y - 45} r={8} className="fill-white stroke-indigo-600 stroke-2 group-hover/rotate:fill-indigo-100" />
-                        <RotateIcon x={ex.x - 5} y={ex.y - 50} size={10} className="text-indigo-600 pointer-events-none" />
-                     </g>
+                     <>
+                        {/* Label Move Handle */}
+                        {ex.type !== 'primary' && (
+                          <circle cx={ex.x + (ex.labelX || 0) + 6} cy={ex.y + (ex.type !== 'fire-alarm' && ex.type !== 'extinguisher' && ex.type !== 'first-aid' ? 35 : 28) + (ex.labelY || 0) - 3} r={3} fill="#f59e0b" className="cursor-move print:hidden" onMouseDown={e => onMouseDown(e, 'label_move', ex.id)} />
+                        )}
+
+                        <g className="print:hidden cursor-grab active:cursor-grabbing group/rotate" onMouseDown={e => onMouseDown(e, 'rotate', ex.id)}>
+                            <line x1={ex.x} y1={ex.y - 20} x2={ex.x} y2={ex.y - 45} stroke="#4f46e5" strokeWidth="2" />
+                            <circle cx={ex.x} cy={ex.y - 45} r={8} className="fill-white stroke-indigo-600 stroke-2 group-hover/rotate:fill-indigo-100" />
+                            <RotateIcon x={ex.x - 5} y={ex.y - 50} size={10} className="text-indigo-600 pointer-events-none" />
+                        </g>
+                     </>
                    )}
                 </g>
               ))}
