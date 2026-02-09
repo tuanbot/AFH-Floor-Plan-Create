@@ -785,7 +785,23 @@ const App: React.FC = () => {
 
   const handleCanvasSizeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
-    const [w, h] = value.split('x').map(Number);
+    let w = DEFAULT_CANVAS_SIZE;
+    let h = DEFAULT_CANVAS_SIZE;
+
+    if (value === 'screen') {
+        // Sidebar is 320px (w-80), padding p-12 (48px) * 2 = 96px
+        // Header is 64px (h-16), padding p-12 (48px) * 2 = 96px
+        // Let's make it fill the available space comfortably minus margins
+        const availableW = window.innerWidth - 320 - 96; 
+        const availableH = window.innerHeight - 64 - 96;
+        w = Math.max(800, Math.floor(availableW / 20) * 20); // Snap to gridish
+        h = Math.max(600, Math.floor(availableH / 20) * 20);
+    } else if (value.includes('x')) {
+        const [width, height] = value.split('x').map(Number);
+        w = width;
+        h = height;
+    }
+
     setState(prev => {
        const next = { ...prev, canvasWidth: w, canvasHeight: h };
        pushHistory(next);
@@ -872,6 +888,9 @@ const App: React.FC = () => {
     tabs.unshift({ id: state.projectId, name: state.projectName, updatedAt: Date.now(), state: state });
   }
   tabs.sort((a, b) => b.updatedAt - a.updatedAt);
+  
+  const standardSizes = ["800x800", "1200x1200", "1024x768", "1200x800", "1600x900", "1920x1080", "2000x1000"];
+  const currentSizeStr = `${state.canvasWidth}x${state.canvasHeight}`;
 
   return (
     <div className="flex h-screen bg-slate-100 overflow-hidden font-sans" onMouseMove={onMouseMove} onMouseUp={onMouseUp}>
@@ -1165,14 +1184,21 @@ const App: React.FC = () => {
             <div className="flex items-center gap-1 mr-2 border border-slate-200 rounded-lg bg-white p-1" title="Canvas Size">
               <Scaling size={16} className="text-slate-400 ml-1"/>
               <select 
-                value={`${state.canvasWidth}x${state.canvasHeight}`}
+                value={currentSizeStr}
                 onChange={handleCanvasSizeChange}
-                className="text-[10px] font-black bg-transparent outline-none text-slate-600 w-20 text-center cursor-pointer"
+                className="text-[10px] font-black bg-transparent outline-none text-slate-600 w-24 text-center cursor-pointer"
               >
-                <option value="800x800">800x800</option>
-                <option value="1200x800">1200x800</option>
-                <option value="1200x1200">1200x1200</option>
-                <option value="1600x1200">1600x1200</option>
+                <option value="800x800">Square (800x800)</option>
+                <option value="1200x1200">Square L (1200x1200)</option>
+                <option value="1024x768">Tablet (1024x768)</option>
+                <option value="1200x800">Landscape (1200x800)</option>
+                <option value="1600x900">HD+ (1600x900)</option>
+                <option value="1920x1080">Full HD (1920x1080)</option>
+                <option value="2000x1000">Wide (2000x1000)</option>
+                <option value="screen">Fit to Screen</option>
+                {!standardSizes.includes(currentSizeStr) && (
+                   <option value={currentSizeStr}>Custom ({currentSizeStr})</option>
+                )}
               </select>
             </div>
 
