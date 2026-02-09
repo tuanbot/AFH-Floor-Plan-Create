@@ -58,7 +58,8 @@ import {
   Redo,
   Clipboard,
   BrickWall,
-  RotateCw as RotateIcon
+  RotateCw as RotateIcon,
+  Type
 } from 'lucide-react';
 import { Room, ExitPoint, HouseFeature, HouseDetails, AppState, SafetyRoute, RoutePoint, SavedProject } from './types';
 import { analyzeSafetyPlan, convertSketchToDiagram } from './geminiService';
@@ -601,11 +602,11 @@ const App: React.FC = () => {
       linen: { w: 40, h: 20 }, 'kitchen-island': { w: 100, h: 50 }, fridge: { w: 40, h: 40 }, 
       dishwasher: { w: 30, h: 30 }, range: { w: 40, h: 40 }, 'washer-dryer': { w: 60, h: 35 }, 
       'water-heater': { w: 30, h: 30 }, 'elec-panel': { w: 30, h: 10 }, fireplace: { w: 80, h: 30 },
-      wall: { w: 200, h: 10 }
+      wall: { w: 200, h: 10 }, label: { w: 100, h: 30 }
     }[type];
     const newFeature: HouseFeature = {
       id: `feature-${Date.now()}`, type, x: 250, y: 250, width: dimensions.w, height: dimensions.h, 
-      rotation: 0, label: type.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ')
+      rotation: 0, label: type === 'label' ? 'Text Label' : type.split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' ')
     };
     setState(prev => {
        const next = { ...prev, features: [...prev.features, newFeature], selectedId: newFeature.id };
@@ -974,6 +975,7 @@ const App: React.FC = () => {
                 <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b pb-1">Architecture</h2>
                 <div className="grid grid-cols-3 gap-2">
                   <button onClick={addRoom} className={sidebarButtonClass}><Plus size={14}/> Room</button>
+                  <button onClick={() => addFeature('label')} className={sidebarButtonClass}><Type size={14}/> Label</button>
                   <button onClick={() => addFeature('wall')} className={sidebarButtonClass}><BrickWall size={14}/> Wall</button>
                   <button onClick={() => addFeature('garden')} className={sidebarButtonClass}><TreePine size={14}/> Garden</button>
                   <button onClick={() => addFeature('driveway')} className={sidebarButtonClass}><Car size={14}/> Driveway</button>
@@ -1462,12 +1464,29 @@ const App: React.FC = () => {
                           <text x={f.width/2} y={f.height/2 + 3} textAnchor="middle" fontSize={8} className="font-bold">WH</text>
                       </g>
                   )}
+                  {f.type === 'label' && (
+                    <g>
+                      <rect width={f.width} height={f.height} fill="transparent" stroke={state.selectedId === f.id ? "#4f46e5" : "none"} strokeWidth="1" strokeDasharray="4 2" />
+                      <text 
+                        x={f.width/2} 
+                        y={f.height/2} 
+                        dominantBaseline="middle" 
+                        textAnchor="middle" 
+                        className="font-bold fill-slate-900 pointer-events-none"
+                        style={{ fontSize: Math.max(12, f.height * 0.6) }}
+                      >
+                        {f.label}
+                      </text>
+                    </g>
+                  )}
                   {/* Fallback for others */}
-                  {!['door', 'sliding-door', 'window', 'stairs', 'toilet', 'single-bed', 'double-bed', 'sink-single', 'sink-double', 'bathtub', 'shower', 'sofa', 'table', 'range', 'fridge', 'closet-double', 'closet-unit', 'washer-dryer', 'fireplace', 'vanity-single', 'vanity-double', 'desk', 'water-heater', 'wall', 'garden', 'driveway'].includes(f.type) && (
+                  {!['door', 'sliding-door', 'window', 'stairs', 'toilet', 'single-bed', 'double-bed', 'sink-single', 'sink-double', 'bathtub', 'shower', 'sofa', 'table', 'range', 'fridge', 'closet-double', 'closet-unit', 'washer-dryer', 'fireplace', 'vanity-single', 'vanity-double', 'desk', 'water-heater', 'wall', 'garden', 'driveway', 'label'].includes(f.type) && (
                      <rect width={f.width} height={f.height} fill={f.type.includes('bed') || f.type.includes('table') || f.type.includes('sofa') ? "white" : "#f1f5f9"} stroke="#000" strokeWidth="2" rx={2}/>
                   )}
                    {/* Fallback label */}
-                   <text x={f.width/2} y={f.height + 11} textAnchor="middle" className="text-[8px] font-black fill-slate-500 uppercase tracking-tight pointer-events-none">{f.label}</text>
+                   {f.type !== 'label' && (
+                     <text x={f.width/2} y={f.height + 11} textAnchor="middle" className="text-[8px] font-black fill-slate-500 uppercase tracking-tight pointer-events-none">{f.label}</text>
+                   )}
 
                   {state.selectedId === f.id && (
                      <>
