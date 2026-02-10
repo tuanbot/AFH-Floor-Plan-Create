@@ -1,3 +1,4 @@
+
 export type Room = {
   id: string;
   name: string;
@@ -77,6 +78,8 @@ export type AppState = {
   canvasWidth: number;
   canvasHeight: number;
   scale: number;
+  snapToObjects?: boolean;
+  snapIndicator?: { x: number; y: number } | null;
 };
 
 export type SavedProject = {

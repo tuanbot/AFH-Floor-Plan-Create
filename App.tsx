@@ -63,15 +63,90 @@ import {
   AlignCenter,
   RotateCcw as ResetIcon,
   Minus,
-  Fence
+  Fence,
+  Magnet
 } from 'lucide-react';
 import { Room, ExitPoint, HouseFeature, HouseDetails, AppState, SafetyRoute, RoutePoint, SavedProject } from './types';
 import { analyzeSafetyPlan, convertSketchToDiagram } from './geminiService';
 
 const DEFAULT_CANVAS_SIZE = 800;
 const FIXED_THICKNESS_TYPES = ['wall', 'fence', 'window', 'sliding-door'];
+const SNAP_THRESHOLD = 15; // Pixels
 
 const generateId = () => `id-${Math.random().toString(36).slice(2, 11)}-${Date.now()}`;
+
+// --- Geometry Helpers ---
+
+// Get world coordinates of corners for a rotated rectangle
+const getItemCorners = (item: Room | HouseFeature) => {
+  const w = item.width;
+  const h = item.height;
+  const cx = item.x + w / 2;
+  const cy = item.y + h / 2;
+  const r = item.rotation || 0;
+  const rad = r * (Math.PI / 180);
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  // Relative corner positions from center
+  // TL, TR, BR, BL
+  const offsets = [
+    { x: -w/2, y: -h/2 },
+    { x: w/2, y: -h/2 },
+    { x: w/2, y: h/2 },
+    { x: -w/2, y: h/2 }
+  ];
+
+  return offsets.map(p => ({
+    x: cx + (p.x * cos - p.y * sin),
+    y: cy + (p.x * sin + p.y * cos)
+  }));
+};
+
+// Get world coordinate of a specific point in local space (e.g. width, height/2)
+const localToWorld = (lx: number, ly: number, item: Room | HouseFeature) => {
+  const w = item.width;
+  const h = item.height;
+  const cx = item.x + w / 2;
+  const cy = item.y + h / 2;
+  const r = item.rotation || 0;
+  const rad = r * (Math.PI / 180);
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  // vector from center
+  const dx = lx - w/2;
+  const dy = ly - h/2;
+
+  return {
+    x: cx + (dx * cos - dy * sin),
+    y: cy + (dx * sin + dy * cos)
+  };
+};
+
+const worldToLocal = (wx: number, wy: number, item: Room | HouseFeature) => {
+  const w = item.width;
+  const h = item.height;
+  const cx = item.x + w / 2;
+  const cy = item.y + h / 2;
+  const r = item.rotation || 0;
+  const rad = r * (Math.PI / 180);
+  const cos = Math.cos(-rad); // Inverse rotation
+  const sin = Math.sin(-rad);
+
+  const dx = wx - cx;
+  const dy = wy - cy;
+
+  const localDx = dx * cos - dy * sin;
+  const localDy = dx * sin + dy * cos;
+
+  return {
+    x: localDx + w/2,
+    y: localDy + h/2
+  };
+};
+
+const getDist = (p1: {x:number, y:number}, p2: {x:number, y:number}) => Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
 
 // Factory function to create fresh initial state with unique IDs
 const createInitialState = (): AppState => ({
@@ -94,6 +169,8 @@ const createInitialState = (): AppState => ({
   canvasWidth: DEFAULT_CANVAS_SIZE,
   canvasHeight: DEFAULT_CANVAS_SIZE,
   scale: 0.6, // Default: 1px = 0.6 inches
+  snapToObjects: true,
+  snapIndicator: null,
 });
 
 const App: React.FC = () => {
@@ -397,6 +474,7 @@ const App: React.FC = () => {
         canvasWidth: project.state.canvasWidth || DEFAULT_CANVAS_SIZE,
         canvasHeight: project.state.canvasHeight || DEFAULT_CANVAS_SIZE,
         scale: project.state.scale || 0.6,
+        snapToObjects: project.state.snapToObjects ?? true,
       };
       setState(newState);
       setHistory([newState]);
@@ -702,6 +780,22 @@ const App: React.FC = () => {
     setActiveRoute(null);
   };
 
+  // Gather all potential snap points (corners/endpoints) from rooms and features
+  const getSnapPoints = useCallback((excludeId: string | null) => {
+    const points: {x:number, y:number}[] = [];
+    state.rooms.forEach(r => {
+      if (r.id !== excludeId) points.push(...getItemCorners(r));
+    });
+    state.features.forEach(f => {
+      if (f.id !== excludeId) points.push(...getItemCorners(f));
+    });
+    // Add simple center points for exits/small items
+    state.exits.forEach(e => {
+        if (e.id !== excludeId) points.push({x: e.x, y: e.y});
+    });
+    return points;
+  }, [state.rooms, state.features, state.exits]);
+
   const onMouseDown = (e: React.MouseEvent, type: 'room' | 'exit' | 'feature' | 'resize' | 'rotate' | 'route' | 'label_move', id: string) => {
     if (state.mode === 'route') return;
     e.stopPropagation();
@@ -757,12 +851,12 @@ const App: React.FC = () => {
   };
 
   const onMouseMove = (e: React.MouseEvent) => {
+    let indicator: {x:number, y:number} | null = null;
+
     if (movingLabel) {
       const dx = e.clientX - movingLabel.startX;
       const dy = e.clientY - movingLabel.startY;
       
-      // Rotate delta to match item's local coordinate system
-      // Rotation is clockwise in SVG/CSS, so we rotate counter-clockwise to find local delta
       const rad = -movingLabel.rotation * Math.PI / 180;
       const localDx = dx * Math.cos(rad) - dy * Math.sin(rad);
       const localDy = dx * Math.sin(rad) + dy * Math.cos(rad);
@@ -789,11 +883,57 @@ const App: React.FC = () => {
       else updateExit(rotatingItem.id, { rotation: newRotation });
 
     } else if (draggingItem) {
-      const nx = snap(e.clientX - draggingItem.offsetX);
-      const ny = snap(e.clientY - draggingItem.offsetY);
+      // Base position from grid snap
+      let nx = snap(e.clientX - draggingItem.offsetX);
+      let ny = snap(e.clientY - draggingItem.offsetY);
+
+      // --- Object Snapping Logic for Drag ---
+      if (state.snapToObjects !== false) {
+        const item = [...state.rooms, ...state.features, ...state.exits].find(i => i.id === draggingItem.id);
+        if (item) {
+            const snapPoints = getSnapPoints(item.id);
+            // We need to check if any of THIS item's corners align with any target snap point
+            // Calculate relative vectors of this item's corners to its origin (x,y)
+            const cornersRelative = ('width' in item) ? getItemCorners({...item, x:0, y:0}) : [{x:0, y:0}];
+            
+            let bestDist = SNAP_THRESHOLD;
+            let snapOffset = { x: 0, y: 0 };
+            let snapped = false;
+
+            // Try to align each corner of the dragging item to each target snap point
+            // Proposed World Corner = (nx, ny) + RelativeCorner
+            // We want Proposed World Corner approx Target Snap Point
+            // So (nx, ny) approx Target Snap Point - RelativeCorner
+            
+            for (const cornerRel of cornersRelative) {
+                for (const target of snapPoints) {
+                    // Where the item origin would be if we snapped this corner
+                    const neededOriginX = target.x - cornerRel.x;
+                    const neededOriginY = target.y - cornerRel.y;
+                    
+                    // Distance from our current mouse-proposed origin to this needed origin
+                    const dist = Math.sqrt(Math.pow(nx - neededOriginX, 2) + Math.pow(ny - neededOriginY, 2));
+                    
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        snapOffset = { x: neededOriginX - nx, y: neededOriginY - ny };
+                        indicator = target; // Indicator at the snap target
+                        snapped = true;
+                    }
+                }
+            }
+
+            if (snapped) {
+                nx += snapOffset.x;
+                ny += snapOffset.y;
+            }
+        }
+      }
+
       if (state.rooms.some(r => r.id === draggingItem.id)) updateRoom(draggingItem.id, { x: nx, y: ny });
       else if (state.features.some(f => f.id === draggingItem.id)) updateFeature(draggingItem.id, { x: nx, y: ny });
       else setState(prev => ({ ...prev, exits: prev.exits.map(ex => ex.id === draggingItem.id ? { ...ex, x: nx, y: ny } : ex) }));
+
     } else if (resizingItem) {
       const dw = e.clientX - resizingItem.startX;
       const dh = e.clientY - resizingItem.startY;
@@ -801,20 +941,52 @@ const App: React.FC = () => {
       const rawNewWidth = Math.max(state.gridSize, resizingItem.startW + dw);
       const rawNewHeight = Math.max(state.gridSize, resizingItem.startH + dh);
       
-      const newWidth = state.snapToGrid ? Math.round(rawNewWidth / state.gridSize) * state.gridSize : rawNewWidth;
-      
-      // Determine if we should lock height/thickness
-      const feature = state.features.find(f => f.id === resizingItem.id);
-      const isFixedThickness = feature && FIXED_THICKNESS_TYPES.includes(feature.type);
-      
-      // For walls/fences/windows, keep height (thickness) constant during drag resize to prevent accidental thickening
-      // Snap logic is also ignored for height in this specific case if it were applied, but here we just use startH.
+      let newWidth = state.snapToGrid ? Math.round(rawNewWidth / state.gridSize) * state.gridSize : rawNewWidth;
+      const isFixedThickness = state.features.some(f => f.id === resizingItem.id && FIXED_THICKNESS_TYPES.includes(f.type));
       const newHeight = isFixedThickness 
           ? resizingItem.startH 
           : (state.snapToGrid ? Math.round(rawNewHeight / state.gridSize) * state.gridSize : rawNewHeight);
+
+      // --- Object Snapping Logic for Resize (Width only mainly) ---
+      if (state.snapToObjects !== false) {
+         // Determine the world position of the handle we are dragging.
+         // Assume handle is at local (width, height/2) or (width, height)
+         // Let's use (width, height/2) as the "End" of a wall.
+         const item = [...state.rooms, ...state.features].find(i => i.id === resizingItem.id);
+         if (item) {
+             // Calculate where the mouse is in world space roughly (or just use e.clientX/Y relative to canvas rect if we had it, but here we use offsets)
+             // Better: Calculate the World Coordinate corresponding to `newWidth`.
+             const currentWorldEnd = localToWorld(newWidth, newHeight/2, {...item, width: newWidth, height: newHeight, x: item.x, y: item.y, rotation: resizingItem.rotation});
+             
+             const snapPoints = getSnapPoints(resizingItem.id);
+             let bestDist = SNAP_THRESHOLD;
+             
+             for (const target of snapPoints) {
+                 const dist = getDist(currentWorldEnd, target);
+                 if (dist < bestDist) {
+                     // We found a point close to where we are dragging the end.
+                     // We need to calculate what 'width' would put the end exactly at 'target'.
+                     // Convert 'target' to local coordinates.
+                     const localTarget = worldToLocal(target.x, target.y, {...item, x: item.x, y: item.y, rotation: resizingItem.rotation, width: item.width, height: item.height});
+                     // The new width should be localTarget.x
+                     // Check if localTarget.y is reasonable (within height/2 +/- threshold)
+                     if (Math.abs(localTarget.y - newHeight/2) < Math.max(newHeight, SNAP_THRESHOLD)) {
+                         newWidth = localTarget.x;
+                         bestDist = dist;
+                         indicator = target;
+                     }
+                 }
+             }
+         }
+      }
       
       if (state.rooms.some(r => r.id === resizingItem.id)) updateRoom(resizingItem.id, { width: newWidth, height: newHeight });
       else updateFeature(resizingItem.id, { width: newWidth, height: newHeight });
+    }
+
+    // Update indicator state
+    if (JSON.stringify(indicator) !== JSON.stringify(state.snapIndicator)) {
+        setState(prev => ({...prev, snapIndicator: indicator}));
     }
   };
 
@@ -823,6 +995,7 @@ const App: React.FC = () => {
     setResizingItem(null);
     setRotatingItem(null);
     setMovingLabel(null);
+    setState(prev => ({...prev, snapIndicator: null}));
     
     // Check if drag resulted in a state change
     if (dragStartStateRef.current && dragStartStateRef.current !== state) {
@@ -837,9 +1010,6 @@ const App: React.FC = () => {
     let h = DEFAULT_CANVAS_SIZE;
 
     if (value === 'screen') {
-        // Sidebar is 320px (w-80), padding p-12 (48px) * 2 = 96px
-        // Header is 64px (h-16), padding p-12 (48px) * 2 = 96px
-        // Let's make it fill the available space comfortably minus margins
         const availableW = window.innerWidth - 320 - 96; 
         const availableH = window.innerHeight - 64 - 96;
         w = Math.max(800, Math.floor(availableW / 20) * 20); // Snap to gridish
@@ -1359,6 +1529,14 @@ const App: React.FC = () => {
               >
                 <Grid3X3 size={16} />
               </button>
+              <button
+                type="button"
+                onClick={() => setState(prev => ({...prev, snapToObjects: !prev.snapToObjects}))}
+                title="Toggle Object Snap (Magnetic)"
+                className={`p-1.5 rounded-md transition-all ${state.snapToObjects !== false ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400 hover:text-slate-600'}`}
+              >
+                <Magnet size={16} />
+              </button>
               <button 
                 type="button"
                 onClick={() => setState(prev => ({...prev, showDimensions: !prev.showDimensions}))}
@@ -1406,6 +1584,9 @@ const App: React.FC = () => {
                    <pattern id="grid" width={state.gridSize} height={state.gridSize} patternUnits="userSpaceOnUse">
                       <path d={`M ${state.gridSize} 0 L 0 0 0 ${state.gridSize}`} fill="none" stroke="#f1f5f9" strokeWidth="1"/>
                    </pattern>
+                   <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155" />
+                   </marker>
                 </defs>
                 {state.snapToGrid && <rect width="100%" height="100%" fill="url(#grid)" className="print:hidden" />}
 
@@ -1418,6 +1599,14 @@ const App: React.FC = () => {
                 {activeRoute && activeRoute.length > 0 && (
                    <polyline points={activeRoute.map(p => `${p.x},${p.y}`).join(' ')} 
                              fill="none" stroke="#ef4444" strokeWidth={4} strokeDasharray="8 6" className="animate-pulse" />
+                )}
+
+                {/* Snap Indicator */}
+                {state.snapIndicator && (
+                    <circle cx={state.snapIndicator.x} cy={state.snapIndicator.y} r={6} fill="none" stroke="#ec4899" strokeWidth={2} className="animate-ping opacity-75" />
+                )}
+                {state.snapIndicator && (
+                    <circle cx={state.snapIndicator.x} cy={state.snapIndicator.y} r={3} fill="#ec4899" />
                 )}
 
                 {/* Rooms Layer */}
@@ -1491,6 +1680,113 @@ const App: React.FC = () => {
                               ))}
                             </g>
                           )}
+                          {f.type === 'stairs' && (
+                            <g>
+                              <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="1" />
+                              {[...Array(8)].map((_, i) => (
+                                 <line key={i} x1={0} y1={f.height * (i/8)} x2={f.width} y2={f.height * (i/8)} stroke="#cbd5e1" strokeWidth="1" />
+                              ))}
+                              <line x1={f.width/2} y1={f.height*0.1} x2={f.width/2} y2={f.height*0.9} stroke="#334155" strokeWidth="1" markerEnd="url(#arrow)" />
+                            </g>
+                          )}
+                          {(f.type === 'single-bed' || f.type === 'double-bed') && (
+                            <g>
+                              <rect width={f.width} height={f.height} fill="#f8fafc" stroke="#334155" strokeWidth="2" rx={2} />
+                              <rect x={2} y={2} width={f.width-4} height={f.height*0.25} fill="#e2e8f0" rx={2} /> 
+                              <path d={`M 2,${f.height*0.35} Q ${f.width/2},${f.height*0.45} ${f.width-2},${f.height*0.35}`} fill="none" stroke="#cbd5e1" />
+                            </g>
+                          )}
+                          {(f.type.includes('sink') || f.type.includes('vanity')) && (
+                            <g>
+                              <rect width={f.width} height={f.height} fill="#f1f5f9" stroke="#334155" strokeWidth="1" />
+                              {f.type.includes('double') ? (
+                                 <>
+                                   <ellipse cx={f.width*0.25} cy={f.height/2} rx={Math.min(f.width, f.height)*0.2} ry={Math.min(f.width, f.height)*0.25} fill="white" stroke="#94a3b8" />
+                                   <ellipse cx={f.width*0.75} cy={f.height/2} rx={Math.min(f.width, f.height)*0.2} ry={Math.min(f.width, f.height)*0.25} fill="white" stroke="#94a3b8" />
+                                 </>
+                              ) : (
+                                   <ellipse cx={f.width/2} cy={f.height/2} rx={Math.min(f.width, f.height)*0.3} ry={Math.min(f.width, f.height)*0.35} fill="white" stroke="#94a3b8" />
+                              )}
+                            </g>
+                          )}
+                          {f.type === 'toilet' && (
+                            <g>
+                              <rect x={f.width*0.15} y={0} width={f.width*0.7} height={f.height*0.25} fill="white" stroke="#334155" strokeWidth="1" />
+                              <ellipse cx={f.width/2} cy={f.height*0.6} rx={f.width*0.35} ry={f.height*0.35} fill="white" stroke="#334155" strokeWidth="1" />
+                            </g>
+                          )}
+                          {f.type === 'shower' && (
+                            <g>
+                              <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="1" />
+                              <line x1={0} y1={0} x2={f.width} y2={f.height} stroke="#e2e8f0" />
+                              <line x1={f.width} y1={0} x2={0} y2={f.height} stroke="#e2e8f0" />
+                              <circle cx={f.width/2} cy={f.height/2} r={3} fill="white" stroke="#334155" />
+                            </g>
+                          )}
+                          {f.type === 'bathtub' && (
+                            <g>
+                              <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="1" />
+                              <rect x={4} y={4} width={f.width-8} height={f.height-8} rx={f.height/3} fill="#f1f5f9" stroke="#94a3b8" />
+                            </g>
+                          )}
+                          {f.type === 'sofa' && (
+                            <g>
+                              <rect width={f.width} height={f.height} rx={4} fill="#f1f5f9" stroke="#334155" />
+                              <path d={`M 0,0 L 0,${f.height} L ${f.width},${f.height} L ${f.width},0`} fill="none" stroke="none" />
+                              <rect x={0} y={0} width={f.width} height={f.height*0.2} fill="#e2e8f0" stroke="#94a3b8" />
+                              <rect x={0} y={0} width={f.width*0.15} height={f.height} fill="#e2e8f0" stroke="#94a3b8" />
+                              <rect x={f.width*0.85} y={0} width={f.width*0.15} height={f.height} fill="#e2e8f0" stroke="#94a3b8" />
+                            </g>
+                          )}
+                          {f.type === 'range' && (
+                            <g>
+                              <rect width={f.width} height={f.height} fill="#f8fafc" stroke="#334155" />
+                              <circle cx={f.width*0.25} cy={f.height*0.25} r={f.width*0.15} fill="none" stroke="#94a3b8" />
+                              <circle cx={f.width*0.75} cy={f.height*0.25} r={f.width*0.15} fill="none" stroke="#94a3b8" />
+                              <circle cx={f.width*0.25} cy={f.height*0.75} r={f.width*0.15} fill="none" stroke="#94a3b8" />
+                              <circle cx={f.width*0.75} cy={f.height*0.75} r={f.width*0.15} fill="none" stroke="#94a3b8" />
+                            </g>
+                          )}
+                          {f.type === 'fridge' && (
+                            <g>
+                                <rect width={f.width} height={f.height} fill="white" stroke="#334155" />
+                                <line x1={0} y1={f.height*0.3} x2={f.width} y2={f.height*0.3} stroke="#e2e8f0" />
+                                <text x={f.width/2} y={f.height*0.15} textAnchor="middle" dominantBaseline="middle" fontSize={Math.min(10, f.width/3)} fill="#94a3b8">Ref</text>
+                            </g>
+                          )}
+                          {f.type === 'dishwasher' && (
+                            <g>
+                                <rect width={f.width} height={f.height} fill="white" stroke="#334155" />
+                                <rect x={0} y={0} width={f.width} height={f.height*0.2} fill="#e2e8f0" />
+                                <circle cx={f.width*0.2} cy={f.height*0.1} r={2} fill="#94a3b8" />
+                                <circle cx={f.width*0.35} cy={f.height*0.1} r={2} fill="#94a3b8" />
+                                <text x={f.width/2} y={f.height*0.6} textAnchor="middle" dominantBaseline="middle" fontSize={Math.min(10, f.width/3)} fill="#94a3b8">DW</text>
+                            </g>
+                          )}
+                          {f.type === 'fireplace' && (
+                            <g>
+                                <rect width={f.width} height={f.height} fill="#fff7ed" stroke="#7c2d12" />
+                                <rect x={f.width*0.2} y={f.height*0.2} width={f.width*0.6} height={f.height*0.8} fill="#451a03" />
+                                <path d={`M ${f.width*0.5},${f.height*0.8} Q ${f.width*0.3},${f.height*0.5} ${f.width*0.5},${f.height*0.3} Q ${f.width*0.7},${f.height*0.5} ${f.width*0.5},${f.height*0.8}`} fill="#ea580c" />
+                            </g>
+                          )}
+                          {(['table', 'desk', 'kitchen-island'].includes(f.type)) && (
+                            <rect width={f.width} height={f.height} fill="#fff7ed" stroke="#7c2d12" strokeWidth="1" rx={2} />
+                          )}
+                          {f.type === 'washer-dryer' && (
+                            <g>
+                              <rect width={f.width} height={f.height} fill="white" stroke="#334155" />
+                              <text x={f.width/2} y={f.height/2} dominantBaseline="middle" textAnchor="middle" fontSize={10} fill="#94a3b8">W/D</text>
+                            </g>
+                          )}
+                          {(f.type === 'closet-unit' || f.type === 'closet-double') && (
+                              <g>
+                                  <rect width={f.width} height={f.height} fill="#f8fafc" stroke="#334155" strokeWidth="1" />
+                                  <line x1={0} y1={f.height/2} x2={f.width} y2={f.height/2} stroke="#cbd5e1" strokeDasharray="2 2" />
+                                  <line x1={2} y1={2} x2={f.width-2} y2={f.height-2} stroke="#e2e8f0" />
+                                  <line x1={2} y1={f.height-2} x2={f.width-2} y2={2} stroke="#e2e8f0" />
+                              </g>
+                          )}
                           {f.type === 'bathroom' && (
                             <g>
                               <rect width={f.width} height={f.height} fill="#f0f9ff" stroke="#334155" strokeWidth="2" />
@@ -1501,7 +1797,7 @@ const App: React.FC = () => {
                             </g>
                           )}
                           {/* Generic Fallback for other items */}
-                          {!['door', 'sliding-door', 'window', 'wall', 'fence', 'bathroom'].includes(f.type) && f.type !== 'label' && (
+                          {!['door', 'sliding-door', 'window', 'wall', 'fence', 'bathroom', 'stairs', 'single-bed', 'double-bed', 'toilet', 'shower', 'bathtub', 'sofa', 'range', 'table', 'desk', 'kitchen-island', 'washer-dryer', 'closet-unit', 'closet-double', 'fridge', 'dishwasher', 'fireplace'].includes(f.type) && !f.type.includes('sink') && !f.type.includes('vanity') && f.type !== 'label' && (
                              <rect width={f.width} height={f.height} fill="#f1f5f9" stroke="#334155" strokeWidth="2" rx={2}/>
                           )}
                           {f.type === 'label' && (
