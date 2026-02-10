@@ -69,6 +69,7 @@ import { Room, ExitPoint, HouseFeature, HouseDetails, AppState, SafetyRoute, Rou
 import { analyzeSafetyPlan, convertSketchToDiagram } from './geminiService';
 
 const DEFAULT_CANVAS_SIZE = 800;
+const FIXED_THICKNESS_TYPES = ['wall', 'fence', 'window', 'sliding-door'];
 
 const generateId = () => `id-${Math.random().toString(36).slice(2, 11)}-${Date.now()}`;
 
@@ -804,11 +805,11 @@ const App: React.FC = () => {
       
       // Determine if we should lock height/thickness
       const feature = state.features.find(f => f.id === resizingItem.id);
-      const isWallOrFence = feature && (feature.type === 'wall' || feature.type === 'fence');
+      const isFixedThickness = feature && FIXED_THICKNESS_TYPES.includes(feature.type);
       
-      // For walls/fences, keep height (thickness) constant during drag resize to prevent accidental thickening
+      // For walls/fences/windows, keep height (thickness) constant during drag resize to prevent accidental thickening
       // Snap logic is also ignored for height in this specific case if it were applied, but here we just use startH.
-      const newHeight = isWallOrFence 
+      const newHeight = isFixedThickness 
           ? resizingItem.startH 
           : (state.snapToGrid ? Math.round(rawNewHeight / state.gridSize) * state.gridSize : rawNewHeight);
       
@@ -1131,7 +1132,7 @@ const App: React.FC = () => {
                     </div>
 
                     {/* Specific Thickness control for Walls and Fences */}
-                    {selectedFeature && (selectedFeature.type === 'wall' || selectedFeature.type === 'fence') && (
+                    {selectedFeature && FIXED_THICKNESS_TYPES.includes(selectedFeature.type) && (
                         <div className="space-y-1">
                             <label className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Thickness (px)</label>
                             <div className="flex items-center gap-2">
@@ -1268,516 +1269,196 @@ const App: React.FC = () => {
           
           {state.mode === 'safety' && (
              <div className="space-y-6 animate-in fade-in slide-in-from-left-4">
-               {/* Safety Controls Logic... reused from previous code */}
-               <section className="space-y-3">
-                <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b pb-1">Emergency Markers</h2>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => addExit('extinguisher')} className="flex flex-col items-center gap-1 p-3 bg-red-50 border border-red-200 rounded-xl text-[10px] font-black text-red-700 shadow-sm hover:bg-red-100 transition-colors"><Flame size={18}/> FIRE EXT.</button>
-                  <button onClick={() => addExit('fire-alarm')} className="flex flex-col items-center gap-1 p-3 bg-red-50 border border-red-200 rounded-xl text-[10px] font-black text-red-700 shadow-sm hover:bg-red-100 transition-colors"><Bell size={18}/> ALARM</button>
-                  <button onClick={() => addExit('first-aid')} className="flex flex-col items-center gap-1 p-3 bg-blue-50 border border-blue-200 rounded-xl text-[10px] font-black text-blue-700 shadow-sm hover:bg-blue-100 transition-colors"><Stethoscope size={18}/> FIRST AID</button>
-                  <button onClick={() => addExit('primary')} className="flex flex-col items-center gap-1 p-3 bg-green-50 border border-green-200 rounded-xl text-[10px] font-black text-green-700 shadow-sm hover:bg-green-100 transition-colors"><ArrowUpRight size={18}/> PRIMARY EXIT</button>
-                </div>
-              </section>
-              <button type="button" onClick={startRoute} className="w-full flex items-center justify-center gap-3 p-4 bg-red-600 text-white rounded-2xl text-[11px] font-black shadow-xl hover:bg-red-700 transition-all hover:scale-[1.02] active:scale-95">
-                <PenTool size={18}/> DRAW EVACUATION PATH
-              </button>
-              <button type="button" onClick={handleAIAnalysis} disabled={isAnalyzing} className="w-full py-4 bg-slate-800 text-white rounded-2xl text-[11px] font-black flex items-center justify-center gap-3 shadow-2xl hover:bg-slate-700 transition-all active:scale-95">
-                {isAnalyzing ? <Loader2 size={18} className="animate-spin"/> : <BrainCircuit size={18}/>}
-                {isAnalyzing ? 'RUNNING AI SAFETY AUDIT...' : 'AI SAFETY AUDIT'}
-              </button>
-              
-               {/* Display Analysis Result in Sidebar for Safety Mode */}
-               {analysisResult && (
-                  <div className="p-4 bg-slate-800 rounded-2xl text-white text-xs leading-relaxed shadow-lg animate-in fade-in slide-in-from-bottom-4">
-                    <div className="flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
-                      <strong className="text-indigo-400 uppercase tracking-widest">AI Audit Report</strong>
-                      <button onClick={() => setAnalysisResult(null)}><X size={14}/></button>
-                    </div>
-                    <div className="whitespace-pre-wrap max-h-60 overflow-y-auto custom-scrollbar">
-                      {analysisResult}
-                    </div>
-                  </div>
-               )}
+                <section className="space-y-3">
+                   <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b pb-1">Safety Equipment</h2>
+                   <div className="grid grid-cols-3 gap-2">
+                      <button onClick={() => addExit('primary')} className={sidebarButtonClass}><LogOut size={14}/> Primary Exit</button>
+                      <button onClick={() => addExit('secondary')} className={sidebarButtonClass}><LogOut size={14}/> Secondary Exit</button>
+                      <button onClick={() => addExit('fire-alarm')} className={sidebarButtonClass}><Bell size={14}/> Alarm</button>
+                      <button onClick={() => addExit('extinguisher')} className={sidebarButtonClass}><Flame size={14}/> Extinguisher</button>
+                      <button onClick={() => addExit('first-aid')} className={sidebarButtonClass}><Stethoscope size={14}/> First Aid</button>
+                   </div>
+                </section>
+                
+                <section className="space-y-3">
+                   <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b pb-1">Evacuation Routes</h2>
+                   <button onClick={startRoute} className={`w-full flex items-center justify-center gap-2 p-3 border rounded-xl text-[10px] font-black transition-all shadow-sm ${state.mode === 'route' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-400'}`}>
+                      <ArrowUpRight size={16}/> {state.mode === 'route' ? 'DRAWING ROUTE...' : 'DRAW EVACUATION ROUTE'}
+                   </button>
+                   <p className="text-[9px] text-slate-400">Click on canvas to place points. Click Finish when done.</p>
+                </section>
+
+                <section className="space-y-3">
+                   <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b pb-1">AI Analysis</h2>
+                   <button onClick={handleAIAnalysis} disabled={isAnalyzing} className="w-full flex items-center justify-center gap-2 p-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black hover:bg-indigo-700 shadow-md transition-all">
+                      {isAnalyzing ? <Loader2 size={16} className="animate-spin"/> : <BrainCircuit size={16}/>}
+                      ANALYZE SAFETY PLAN
+                   </button>
+                </section>
              </div>
           )}
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col relative overflow-hidden">
-        {/* ... Header Code (unchanged) ... */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 z-20 shadow-sm print:hidden">
-            {/* Tabs Container */}
-          <div className="flex-1 flex items-center gap-1 overflow-x-auto no-scrollbar mr-6">
-            {tabs.map(tab => (
-              <div 
-                key={tab.id}
-                onClick={() => handleSwitchProject(tab)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer group flex-shrink-0
-                   ${tab.id === state.projectId 
-                      ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-sm' 
-                      : 'text-slate-500 hover:bg-slate-100 border border-transparent hover:border-slate-200'}`}
-              >
-                 <FileText size={14} className={tab.id === state.projectId ? 'text-indigo-600' : 'text-slate-400'}/>
-                 <span className="max-w-[120px] truncate">{tab.name || 'Untitled'}</span>
-                 <button onClick={(e) => handleDeleteProject(tab.id, e)} className={`p-0.5 rounded-md hover:bg-red-100 hover:text-red-600 transition-all ${tab.id === state.projectId ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} title="Delete Project"><X size={12} /></button>
-              </div>
-            ))}
-            <button onClick={handleNewProject} className="p-1.5 rounded-lg bg-slate-100 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all ml-1 flex-shrink-0" title="New Project"><Plus size={16}/></button>
-          </div>
-          <div className="flex items-center gap-2">
-             <div className="flex items-center gap-0.5 mr-2 border border-slate-200 rounded-lg bg-white p-1">
-               <button onClick={undo} disabled={historyIndex <= 0} className={`p-1.5 rounded-md transition-all ${historyIndex > 0 ? 'text-slate-600 hover:bg-slate-100' : 'text-slate-300'}`}><Undo size={14} /></button>
-               <button onClick={redo} disabled={historyIndex >= history.length - 1} className={`p-1.5 rounded-md transition-all ${historyIndex < history.length - 1 ? 'text-slate-600 hover:bg-slate-100' : 'text-slate-300'}`}><Redo size={14} /></button>
-               <div className="w-px h-4 bg-slate-200 mx-1"></div>
-               <button onClick={handleCopy} disabled={!state.selectedId} className={`p-1.5 rounded-md transition-all ${state.selectedId ? 'text-slate-600 hover:bg-slate-100' : 'text-slate-300'}`}><Copy size={14} /></button>
-               <button onClick={handlePaste} disabled={!clipboard} className={`p-1.5 rounded-md transition-all ${clipboard ? 'text-slate-600 hover:bg-slate-100' : 'text-slate-300'}`}><Clipboard size={14} /></button>
-             </div>
-             
-             {/* Screen/Canvas Size */}
-            <div className="flex items-center gap-1 mr-2 border border-slate-200 rounded-lg bg-white p-1" title="Canvas Size">
-              <Scaling size={16} className="text-slate-400 ml-1"/>
-              <select 
-                value={currentSizeStr}
-                onChange={handleCanvasSizeChange}
-                className="text-[10px] font-black bg-transparent outline-none text-slate-600 w-24 text-center cursor-pointer"
-              >
-                <option value="800x800">Square (800x800)</option>
-                <option value="1200x1200">Square L (1200x1200)</option>
-                <option value="1024x768">Tablet (1024x768)</option>
-                <option value="1200x800">Landscape (1200x800)</option>
-                <option value="1600x900">HD+ (1600x900)</option>
-                <option value="1920x1080">Full HD (1920x1080)</option>
-                <option value="2000x1000">Wide (2000x1000)</option>
-                <option value="screen">Fit to Screen</option>
-                {!standardSizes.includes(currentSizeStr) && (
-                   <option value={currentSizeStr}>Custom ({currentSizeStr})</option>
-                )}
-              </select>
+      {/* Main Canvas Area */}
+      <main className="flex-1 overflow-auto bg-slate-200/50 p-8 flex justify-center relative">
+         {/* Canvas Controls (Zoom, Grid, Scale) - Floating or top bar */}
+         <div className="absolute top-4 right-4 flex gap-2 z-10">
+            <div className="bg-white p-1 rounded-lg shadow-sm border border-slate-200 flex items-center gap-1">
+               <button onClick={() => setState(p => ({...p, scale: Math.max(0.2, p.scale - 0.1)}))} className="p-2 hover:bg-slate-100 rounded text-slate-600"><Minus size={16}/></button>
+               <span className="text-xs font-bold w-12 text-center">{Math.round(state.scale * 100)}%</span>
+               <button onClick={() => setState(p => ({...p, scale: Math.min(2, p.scale + 0.1)}))} className="p-2 hover:bg-slate-100 rounded text-slate-600"><Plus size={16}/></button>
             </div>
-
-            {/* Rotate Whole Plan */}
-            <button type="button" onClick={handleRotatePlan} className="p-2 mr-2 bg-white border border-slate-200 rounded-lg text-slate-400 hover:text-indigo-600 hover:border-indigo-400 transition-all" title="Rotate Plan 90°">
-              <RefreshCcw size={16}/>
-            </button>
-
-            {/* Grid Controls */}
-            <div className="flex items-center gap-1 mr-2 border border-slate-200 rounded-lg bg-white p-1">
-              <button
-                type="button"
-                onClick={() => setState(prev => ({...prev, snapToGrid: !prev.snapToGrid}))}
-                title="Toggle Snap to Grid"
-                className={`p-1.5 rounded-md transition-all ${state.snapToGrid ? 'bg-indigo-100 text-indigo-700' : 'text-slate-400 hover:text-slate-600'}`}
-              >
-                <Grid3X3 size={16} />
-              </button>
-              <select 
-                value={state.gridSize}
-                onChange={(e) => setState(prev => ({...prev, gridSize: Number(e.target.value)}))}
-                className="text-[10px] font-black bg-transparent outline-none text-slate-600 w-12 text-center cursor-pointer"
-              >
-                <option value="10">10px</option>
-                <option value="20">20px</option>
-                <option value="40">40px</option>
-                <option value="50">50px</option>
-              </select>
-            </div>
-
-            {/* Scale Control */}
-            <div className="flex items-center gap-1 mr-2 border border-slate-200 rounded-lg bg-white p-1" title="Scale (Inches per Pixel)">
-              <Scaling size={16} className="text-slate-400 ml-1"/>
-              <select 
-                value={state.scale}
-                onChange={(e) => setState(prev => ({...prev, scale: Number(e.target.value)}))}
-                className="text-[10px] font-black bg-transparent outline-none text-slate-600 w-20 text-center cursor-pointer"
-              >
-                <option value="0.05">1px = 0.05"</option>
-                <option value="0.1">1px = 0.1"</option>
-                <option value="0.2">1px = 0.2"</option>
-                <option value="0.25">1px = 0.25"</option>
-                <option value="0.4">1px = 0.4"</option>
-                <option value="0.5">1px = 0.5"</option>
-                <option value="0.6">1px = 0.6" (Def)</option>
-                <option value="1">1px = 1"</option>
-                <option value="2">1px = 2"</option>
-                <option value="6">1px = 6"</option>
-                <option value="12">1px = 1'</option>
-              </select>
-            </div>
-
-            {/* Dimensions Toggle */}
-            <button 
-              type="button"
-              onClick={() => setState(prev => ({...prev, showDimensions: !prev.showDimensions}))}
-              className={`flex items-center gap-2 px-3 py-1.5 mr-2 rounded-lg border text-[10px] font-black tracking-widest transition-all ${state.showDimensions ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-200 text-slate-400 hover:text-indigo-600'}`}
-            >
-              <Ruler size={14}/> DIMENSIONS
-            </button>
             
-            <div className="w-px h-6 bg-slate-200 mx-1" />
+            <div className="bg-white p-1 rounded-lg shadow-sm border border-slate-200 flex items-center gap-1">
+                <button onClick={() => setState(p => ({...p, snapToGrid: !p.snapToGrid}))} className={`p-2 rounded ${state.snapToGrid ? 'bg-indigo-100 text-indigo-600' : 'hover:bg-slate-100 text-slate-400'}`} title="Snap to Grid"><Grid3X3 size={16}/></button>
+                <button onClick={() => setState(p => ({...p, showDimensions: !p.showDimensions}))} className={`p-2 rounded ${state.showDimensions ? 'bg-indigo-100 text-indigo-600' : 'hover:bg-slate-100 text-slate-400'}`} title="Show Dimensions"><Ruler size={16}/></button>
+            </div>
 
-             {/* Other header controls ... */}
-             <button type="button" onClick={handlePrint} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-[10px] font-black text-slate-600 hover:border-indigo-400 hover:text-indigo-600 transition-all active:scale-95"><Printer size={16}/> PRINT</button>
-             <button type="button" onClick={handleExportPNG} className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 text-white rounded-lg text-[10px] font-black hover:bg-slate-700 transition-all shadow-md active:scale-95"><Download size={16}/> EXPORT PNG</button>
-          </div>
-        </header>
+            <select value={`${state.canvasWidth}x${state.canvasHeight}`} onChange={handleCanvasSizeChange} className="bg-white border border-slate-200 text-xs font-bold rounded-lg p-2 outline-none shadow-sm">
+                 <option value="screen">Fit Screen</option>
+                 {standardSizes.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            
+            <button onClick={handleRotatePlan} className="bg-white p-2 rounded-lg border border-slate-200 hover:text-indigo-600 shadow-sm" title="Rotate Plan"><RotateCw size={18}/></button>
+            <button onClick={handlePrint} className="bg-white p-2 rounded-lg border border-slate-200 hover:text-indigo-600 shadow-sm" title="Print"><Printer size={18}/></button>
+            <button onClick={handleExportPNG} className="bg-white p-2 rounded-lg border border-slate-200 hover:text-indigo-600 shadow-sm" title="Download Image"><Download size={18}/></button>
+         </div>
+         
+         {/* Analysis Overlay */}
+         {analysisResult && (
+            <div className="absolute top-16 right-4 w-80 bg-white rounded-xl shadow-xl border border-indigo-100 overflow-hidden z-20 animate-in slide-in-from-right-10">
+                <div className="p-3 bg-indigo-600 text-white font-bold flex justify-between items-center">
+                   <span className="flex items-center gap-2"><BrainCircuit size={16}/> AI Analysis</span>
+                   <button onClick={() => setAnalysisResult(null)} className="hover:bg-white/20 p-1 rounded"><X size={14}/></button>
+                </div>
+                <div className="p-4 text-xs leading-relaxed max-h-96 overflow-y-auto whitespace-pre-wrap text-slate-600">
+                    {analysisResult}
+                </div>
+            </div>
+         )}
+         
+         <div ref={canvasRef} 
+              className="bg-white shadow-2xl relative transition-all duration-300 ease-out"
+              style={{ width: state.canvasWidth, height: state.canvasHeight, cursor: state.mode === 'route' ? 'crosshair' : 'default' }}
+              onClick={handleCanvasClick}
+         >
+             {/* Background Image */}
+             {state.backgroundUrl && <img src={state.backgroundUrl} className="absolute inset-0 w-full h-full object-contain opacity-40 pointer-events-none" />}
+             
+             <svg ref={svgRef} width="100%" height="100%" className="absolute inset-0 overflow-visible">
+                <defs>
+                   <pattern id="grid" width={state.gridSize} height={state.gridSize} patternUnits="userSpaceOnUse">
+                      <path d={`M ${state.gridSize} 0 L 0 0 0 ${state.gridSize}`} fill="none" stroke="#f1f5f9" strokeWidth="1"/>
+                   </pattern>
+                </defs>
+                {state.snapToGrid && <rect width="100%" height="100%" fill="url(#grid)" />}
 
-        <div className="flex-1 relative overflow-auto p-12 flex items-start justify-center bg-slate-100 print:bg-white print:p-0">
-          <div 
-            ref={canvasRef}
-            key={`${state.projectId}-${state.canvasWidth}-${state.canvasHeight}`} 
-            className="relative bg-white shadow-2xl rounded-lg border-2 border-slate-300 overflow-hidden print:shadow-none print:border-none"
-            style={{ width: state.canvasWidth, height: state.canvasHeight, cursor: state.mode === 'route' ? 'crosshair' : 'default' }}
-            onClick={handleCanvasClick}
-          >
-            {/* ... Background Grid & Image ... */}
-            <div className="absolute inset-0 pointer-events-none opacity-[0.05] print:hidden transition-all duration-300" style={{ backgroundImage: `linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)`, backgroundSize: `${state.gridSize}px ${state.gridSize}px` }} />
-            {state.backgroundUrl && <img src={state.backgroundUrl} className="absolute inset-0 w-full h-full object-contain opacity-20 pointer-events-none grayscale" />}
-
-            <svg ref={svgRef} className="absolute inset-0 w-full h-full" viewBox={`0 0 ${state.canvasWidth} ${state.canvasHeight}`}>
-              <rect width={state.canvasWidth} height={state.canvasHeight} fill="white" className="hidden print:block" />
-              
-              {/* Routes */}
-              {state.routes.map(route => (
-                <polyline key={route.id} points={route.points.map(p => `${p.x},${p.y}`).join(' ')} fill="none" stroke="#ef4444" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
-              ))}
-              {activeRoute && <polyline points={activeRoute.map(p => `${p.x},${p.y}`).join(' ')} fill="none" stroke="#ef4444" strokeWidth="6" strokeDasharray="10 5" className="animate-pulse" />}
-
-              {/* ROOMS */}
-              {state.rooms.map(room => (
-                <g 
-                    key={room.id} 
-                    transform={`rotate(${room.rotation || 0}, ${room.x + room.width/2}, ${room.y + room.height/2})`}
-                    onMouseDown={e => onMouseDown(e, 'room', room.id)} 
-                    onClick={e => e.stopPropagation()}
-                >
-                  <rect x={room.x} y={room.y} width={room.width} height={room.height} fill="white" stroke={state.selectedId === room.id ? '#4f46e5' : '#334155'} strokeWidth={state.selectedId === room.id ? 4 : 2} className="cursor-move" />
-                  <text x={room.x + 8 + (room.labelX || 0)} y={room.y + 18 + (room.labelY || 0)} className="font-black fill-slate-800 uppercase pointer-events-none tracking-widest" style={{ fontSize: room.fontSize || 9 }}>{room.name}</text>
-                  
-                  {/* Dimensions - rotate them back so they are readable? Or keep with room. */}
-                  {state.showDimensions && (
-                    <>
-                      <text x={room.x + room.width / 2} y={room.y - 8} textAnchor="middle" className="text-[10px] font-black fill-indigo-600">{formatDim(room.width)}</text>
-                      <text x={room.x - 8} y={room.y + room.height / 2} textAnchor="middle" transform={`rotate(-90, ${room.x - 8}, ${room.y + room.height / 2})`} className="text-[10px] font-black fill-indigo-600">{formatDim(room.height)}</text>
-                    </>
-                  )}
-                  
-                  {state.selectedId === room.id && (
-                     <>
-                        {/* Label Move Handle */}
-                        <circle cx={room.x + 8 + (room.labelX || 0) - 6} cy={room.y + 18 + (room.labelY || 0) - 3} r={3} fill="#f59e0b" className="cursor-move print:hidden" onMouseDown={e => onMouseDown(e, 'label_move', room.id)} />
-                        
-                        {/* Resize Handle */}
-                        <circle cx={room.x + room.width} cy={room.y + room.height} r={8} className="fill-indigo-600 cursor-nwse-resize stroke-white stroke-2 print:hidden" onMouseDown={e => onMouseDown(e, 'resize', room.id)} />
-                        {/* Rotation Handle - Top Center */}
-                        <g className="print:hidden cursor-grab active:cursor-grabbing group/rotate" onMouseDown={e => onMouseDown(e, 'rotate', room.id)}>
-                            <line x1={room.x + room.width/2} y1={room.y} x2={room.x + room.width/2} y2={room.y - 25} stroke="#4f46e5" strokeWidth="2" />
-                            <circle cx={room.x + room.width/2} cy={room.y - 25} r={8} className="fill-white stroke-indigo-600 stroke-2 group-hover/rotate:fill-indigo-100" />
-                            <RotateIcon x={room.x + room.width/2 - 5} y={room.y - 30} size={10} className="text-indigo-600 pointer-events-none" />
-                        </g>
-                     </>
-                  )}
-                </g>
-              ))}
-
-              {/* FEATURES */}
-              {state.features.map(f => (
-                <g key={f.id} transform={`translate(${f.x}, ${f.y}) rotate(${f.rotation}, ${f.width/2}, ${f.height/2})`} onMouseDown={e => onMouseDown(e, 'feature', f.id)} onClick={e => e.stopPropagation()} className="cursor-move group">
-                  {/* ... Feature Render Logic (Door, Window, Bed, etc.) ... */}
-                  {f.type === 'door' && (
-                     <g>
-                      <path d={`M 0,${f.height} A ${f.width},${f.height} 0 0 1 ${f.width},0`} fill="none" stroke="#334155" strokeWidth="2" strokeDasharray="4 2"/>
-                      <line x1="0" y1="0" x2="0" y2={f.height} stroke="#334155" strokeWidth="4" />
-                     </g>
-                  )}
-                  {f.type === 'sliding-door' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="1" />
-                      <line x1={0} y1={f.height*0.3} x2={f.width*0.6} y2={f.height*0.3} stroke="#334155" strokeWidth="2" />
-                      <line x1={f.width*0.4} y1={f.height*0.7} x2={f.width} y2={f.height*0.7} stroke="#334155" strokeWidth="2" />
-                    </g>
-                  )}
-                   {f.type === 'window' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="#e0f2fe" stroke="#334155" strokeWidth="2" />
-                      <line x1={0} y1={f.height/2} x2={f.width} y2={f.height/2} stroke="#334155" strokeWidth="1" />
-                    </g>
-                  )}
-                  {f.type === 'wall' && (
-                    <rect width={f.width} height={f.height} fill="#94a3b8" rx={2} />
-                  )}
-                  {f.type === 'fence' && (
-                    <g>
-                      {/* Main rail */}
-                      <rect width={f.width} height={f.height} fill="#78350f" rx={1} />
-                      {/* Posts every ~30px */}
-                      {[...Array(Math.floor(f.width / 30) + 1)].map((_, i) => (
-                         <circle key={i} cx={Math.min(i * 30, f.width - (f.height/2))} cy={f.height/2} r={f.height} fill="#78350f" />
-                      ))}
-                    </g>
-                  )}
-                  {f.type === 'bathroom' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="#f0f9ff" stroke="#334155" strokeWidth="2" />
-                      {/* Toilet representation */}
-                      <rect x={f.width*0.1} y={f.height*0.1} width={f.width*0.25} height={f.height*0.25} fill="white" stroke="#94a3b8" rx={2} />
-                      <circle cx={f.width*0.225} cy={f.height*0.225} r={f.width*0.05} fill="#cbd5e1" />
-                      {/* Sink representation */}
-                      <rect x={f.width*0.6} y={f.height*0.1} width={f.width*0.3} height={f.height*0.2} fill="white" stroke="#94a3b8" />
-                      <text x={f.width/2} y={f.height*0.7} textAnchor="middle" className="text-[10px] font-bold fill-slate-400">BATH</text>
-                    </g>
-                  )}
-                  {f.type === 'garden' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="#ecfccb" stroke="#4d7c0f" strokeWidth="2" rx={8} />
-                      <circle cx={f.width * 0.2} cy={f.height * 0.2} r={f.width * 0.1} fill="#84cc16" opacity="0.3" />
-                      <circle cx={f.width * 0.8} cy={f.height * 0.7} r={f.width * 0.15} fill="#84cc16" opacity="0.3" />
-                      <circle cx={f.width * 0.4} cy={f.height * 0.6} r={f.width * 0.08} fill="#84cc16" opacity="0.3" />
-                    </g>
-                  )}
-                  {f.type === 'driveway' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="#f1f5f9" stroke="#475569" strokeWidth="2" />
-                      <line x1={f.width * 0.1} y1={0} x2={f.width * 0.1} y2={f.height} stroke="#cbd5e1" strokeWidth="2" />
-                      <line x1={f.width * 0.9} y1={0} x2={f.width * 0.9} y2={f.height} stroke="#cbd5e1" strokeWidth="2" />
-                      <line x1={f.width * 0.5} y1={0} x2={f.width * 0.5} y2={f.height} stroke="#cbd5e1" strokeWidth="2" strokeDasharray="20 10" />
-                    </g>
-                  )}
-                  {f.type === 'stairs' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="#f8fafc" stroke="#334155" strokeWidth="2" />
-                      {[...Array(Math.floor(f.height/15))].map((_, i) => (
-                        <line key={i} x1="0" y1={i*15} x2={f.width} y2={i*15} stroke="#334155" strokeWidth="1" />
-                      ))}
-                      <path d={`M ${f.width/2},${f.height-10} L ${f.width/2},10 M ${f.width/2-5},15 L ${f.width/2},10 L ${f.width/2+5},15`} fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" />
-                    </g>
-                  )}
-                  {f.type === 'toilet' && (
-                    <g>
-                      <rect x={f.width*0.1} y={0} width={f.width*0.8} height={f.height*0.25} fill="white" stroke="#334155" strokeWidth="2" rx={2}/>
-                      <ellipse cx={f.width/2} cy={f.height*0.65} rx={f.width*0.35} ry={f.height*0.3} fill="white" stroke="#334155" strokeWidth="2"/>
-                    </g>
-                  )}
-                  {f.type === 'single-bed' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" rx={4}/>
-                      <rect x={0} y={0} width={f.width} height={f.height*0.25} fill="#f1f5f9" stroke="#334155" strokeWidth="1"/>
-                      <rect x={f.width*0.15} y={f.height*0.3} width={f.width*0.7} height={f.height*0.2} fill="white" stroke="#cbd5e1" rx={5}/>
-                    </g>
-                  )}
-                  {f.type === 'double-bed' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" rx={4}/>
-                      <rect x={0} y={0} width={f.width} height={f.height*0.25} fill="#f1f5f9" stroke="#334155" strokeWidth="1"/>
-                      <rect x={f.width*0.1} y={f.height*0.05} width={f.width*0.35} height={f.height*0.15} fill="white" stroke="#cbd5e1" rx={3}/>
-                      <rect x={f.width*0.55} y={f.height*0.05} width={f.width*0.35} height={f.height*0.15} fill="white" stroke="#cbd5e1" rx={3}/>
-                    </g>
-                  )}
-                  {f.type === 'sink-single' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" rx={2}/>
-                      <ellipse cx={f.width/2} cy={f.height/2} rx={f.width*0.3} ry={f.height*0.3} fill="#f8fafc" stroke="#334155" strokeWidth="1"/>
-                      <line x1={f.width/2} y1={f.height*0.1} x2={f.width/2} y2={f.height*0.3} stroke="#334155" strokeWidth="2"/>
-                    </g>
-                  )}
-                  {f.type === 'sink-double' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" rx={2}/>
-                      <ellipse cx={f.width*0.25} cy={f.height/2} rx={f.width*0.15} ry={f.height*0.3} fill="#f8fafc" stroke="#334155" strokeWidth="1"/>
-                      <ellipse cx={f.width*0.75} cy={f.height/2} rx={f.width*0.15} ry={f.height*0.3} fill="#f8fafc" stroke="#334155" strokeWidth="1"/>
-                    </g>
-                  )}
-                  {f.type === 'bathtub' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" rx={4}/>
-                      <rect x={f.width*0.1} y={f.height*0.1} width={f.width*0.8} height={f.height*0.8} fill="#f8fafc" stroke="#334155" strokeWidth="1" rx={8}/>
-                      <circle cx={f.width*0.5} cy={f.height*0.2} r={3} fill="#94a3b8"/>
-                    </g>
-                  )}
-                  {f.type === 'shower' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2"/>
-                      <line x1={0} y1={0} x2={f.width} y2={f.height} stroke="#334155" strokeWidth="1"/>
-                      <line x1={f.width} y1={0} x2={0} y2={f.height} stroke="#334155" strokeWidth="1"/>
-                      <circle cx={f.width/2} cy={f.height/2} r={3} fill="white" stroke="#334155" strokeWidth="1"/>
-                    </g>
-                  )}
-                  {f.type === 'sofa' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" rx={2}/>
-                      <rect x={0} y={0} width={f.width} height={f.height*0.3} fill="white" stroke="#334155" strokeWidth="1"/>
-                      <rect x={0} y={0} width={f.width*0.15} height={f.height} fill="white" stroke="#334155" strokeWidth="1"/>
-                      <rect x={f.width*0.85} y={0} width={f.width*0.15} height={f.height} fill="white" stroke="#334155" strokeWidth="1"/>
-                    </g>
-                  )}
-                  {f.type === 'table' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="#f8fafc" stroke="#334155" strokeWidth="2" rx={2}/>
-                      <rect x={f.width*0.1} y={f.height*0.1} width={f.width*0.8} height={f.height*0.8} fill="white" stroke="#e2e8f0" strokeWidth="1" rx={1}/>
-                    </g>
-                  )}
-                  {f.type === 'range' && (
-                      <g>
-                          <rect width={f.width} height={f.height} fill="#f1f5f9" stroke="#334155" strokeWidth="2" rx={2}/>
-                          <circle cx={f.width*0.25} cy={f.height*0.25} r={f.width*0.15} fill="none" stroke="#334155" strokeWidth="1"/>
-                          <circle cx={f.width*0.75} cy={f.height*0.25} r={f.width*0.15} fill="none" stroke="#334155" strokeWidth="1"/>
-                          <circle cx={f.width*0.25} cy={f.height*0.75} r={f.width*0.15} fill="none" stroke="#334155" strokeWidth="1"/>
-                          <circle cx={f.width*0.75} cy={f.height*0.75} r={f.width*0.15} fill="none" stroke="#334155" strokeWidth="1"/>
-                      </g>
-                  )}
-                  {f.type === 'fridge' && (
-                      <g>
-                          <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" rx={2}/>
-                          <line x1={0} y1={f.height*0.3} x2={f.width} y2={f.height*0.3} stroke="#334155" strokeWidth="1"/>
-                          <text x={f.width/2} y={f.height*0.7} textAnchor="middle" fontSize={10} className="font-bold fill-slate-400">REF</text>
-                      </g>
-                  )}
-                  {f.type === 'closet-double' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="2 2" />
-                      <polyline
-                          points={`0,${f.height} ${f.width * 0.25},${f.height * 0.5} ${f.width * 0.5},${f.height} ${f.width * 0.75},${f.height * 0.5} ${f.width},${f.height}`}
-                          fill="none"
-                          stroke="#334155"
-                          strokeWidth="2"
-                      />
-                    </g>
-                  )}
-                  {f.type === 'closet-unit' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" />
-                      <line x1={0} y1={f.height/2} x2={f.width} y2={f.height/2} stroke="#334155" strokeWidth="1" strokeDasharray="5 5"/>
-                    </g>
-                  )}
-                  {f.type === 'washer-dryer' && (
-                      <g>
-                          <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" rx={2}/>
-                          <circle cx={f.width/2} cy={f.height/2} r={f.width*0.3} fill="none" stroke="#334155" strokeWidth="1"/>
-                          <rect x={f.width*0.1} y={f.height*0.1} width={f.width*0.8} height={f.height*0.15} fill="#cbd5e1"/>
-                          <text x={f.width/2} y={f.height*0.6} textAnchor="middle" fontSize={8} className="font-bold fill-slate-400">W/D</text>
-                      </g>
-                  )}
-                  {f.type === 'fireplace' && (
-                      <g>
-                          <rect width={f.width} height={f.height} fill="#fff7ed" stroke="#334155" strokeWidth="2"/>
-                          <path d={`M ${f.width*0.2},${f.height} L ${f.width*0.2},${f.height*0.2} L ${f.width*0.8},${f.height*0.2} L ${f.width*0.8},${f.height}`} fill="none" stroke="#334155" strokeWidth="2"/>
-                          <path d={`M ${f.width*0.3},${f.height} Q ${f.width*0.5},${f.height*0.5} ${f.width*0.7},${f.height}`} fill="none" stroke="#fdba74" strokeWidth="2"/>
-                      </g>
-                  )}
-                  {f.type.startsWith('vanity') && (
-                      <g>
-                          <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2"/>
-                          {f.type === 'vanity-single' ? (
-                              <ellipse cx={f.width/2} cy={f.height/2} rx={f.width*0.25} ry={f.height*0.35} fill="#f1f5f9" stroke="#334155" strokeWidth="1"/>
-                          ) : (
-                              <>
-                              <ellipse cx={f.width*0.25} cy={f.height/2} rx={f.width*0.15} ry={f.height*0.35} fill="#f1f5f9" stroke="#334155" strokeWidth="1"/>
-                              <ellipse cx={f.width*0.75} cy={f.height/2} rx={f.width*0.15} ry={f.height*0.35} fill="#f1f5f9" stroke="#334155" strokeWidth="1"/>
-                              </>
-                          )}
-                      </g>
-                  )}
-                  {f.type === 'desk' && (
-                      <g>
-                          <rect width={f.width} height={f.height} fill="#f8fafc" stroke="#334155" strokeWidth="2"/>
-                          <rect x={f.width*0.1} y={f.height*0.1} width={f.width*0.2} height={f.height*0.8} fill="white" stroke="#334155" strokeWidth="1"/>
-                          <rect x={f.width*0.7} y={f.height*0.1} width={f.width*0.2} height={f.height*0.8} fill="white" stroke="#334155" strokeWidth="1"/>
-                      </g>
-                  )}
-                  {f.type === 'water-heater' && (
-                      <g>
-                          <circle cx={f.width/2} cy={f.height/2} r={Math.min(f.width, f.height)/2} fill="white" stroke="#334155" strokeWidth="2"/>
-                          <text x={f.width/2} y={f.height/2 + 3} textAnchor="middle" fontSize={8} className="font-bold">WH</text>
-                      </g>
-                  )}
-                  {f.type === 'label' && (
-                    <g>
-                      <rect width={f.width} height={f.height} fill="transparent" stroke={state.selectedId === f.id ? "#4f46e5" : "none"} strokeWidth="1" strokeDasharray="4 2" />
-                      <text 
-                        x={f.width/2 + (f.labelX || 0)} 
-                        y={f.height/2 + (f.labelY || 0)} 
-                        dominantBaseline="middle" 
-                        textAnchor="middle" 
-                        className="font-bold fill-slate-900 pointer-events-none"
-                        style={{ fontSize: f.fontSize || Math.max(12, f.height * 0.6) }}
-                      >
-                        {f.label}
+                {/* Rooms */}
+                {state.rooms.map(room => (
+                   <g key={room.id} transform={`translate(${room.x},${room.y}) rotate(${room.rotation}, ${room.width/2}, ${room.height/2})`}
+                      onMouseDown={(e) => onMouseDown(e, 'room', room.id)}
+                      className={`cursor-move group ${state.selectedId === room.id ? 'opacity-90' : ''}`}
+                   >
+                      <rect width={room.width} height={room.height} fill={room.color} stroke={state.selectedId === room.id ? '#6366f1' : '#334155'} strokeWidth={state.selectedId === room.id ? 2 : 1} />
+                      <text x={room.width/2 + (room.labelX || 0)} y={room.height/2 + (room.labelY || 0)} textAnchor="middle" dominantBaseline="middle" 
+                            fontSize={room.fontSize || 12} fontWeight="bold" fill="#334155" className="pointer-events-none select-none">
+                            {room.name}
                       </text>
-                      {state.selectedId === f.id && (
-                        <circle cx={f.width/2 + (f.labelX || 0) + 6} cy={f.height/2 + (f.labelY || 0) - 6} r={3} fill="#f59e0b" className="cursor-move print:hidden" onMouseDown={e => onMouseDown(e, 'label_move', f.id)} />
+                      {state.showDimensions && (
+                         <text x={room.width/2} y={room.height + 14} textAnchor="middle" fontSize={10} fill="#94a3b8" className="pointer-events-none select-none">
+                            {formatDim(room.width)} x {formatDim(room.height)}
+                         </text>
                       )}
+                      
+                      {/* Resize Handle */}
+                      {state.selectedId === room.id && (
+                         <circle cx={room.width} cy={room.height} r={6} fill="white" stroke="#6366f1" strokeWidth={2} 
+                                 className="cursor-nwse-resize"
+                                 onMouseDown={(e) => onMouseDown(e, 'resize', room.id)} />
+                      )}
+                      {/* Rotate Handle */}
+                      {state.selectedId === room.id && (
+                         <circle cx={room.width/2} cy={-15} r={5} fill="#6366f1" className="cursor-grab"
+                                 onMouseDown={(e) => onMouseDown(e, 'rotate', room.id)} />
+                      )}
+                      {/* Label Move Handle */}
+                      {state.selectedId === room.id && (
+                         <circle cx={room.width/2 + (room.labelX||0)} cy={room.height/2 + (room.labelY||0)} r={3} fill="#10b981" className="cursor-move opacity-0 group-hover:opacity-100"
+                                 onMouseDown={(e) => onMouseDown(e, 'label_move', room.id)} />
+                      )}
+                   </g>
+                ))}
+
+                {/* Features */}
+                {state.features.map(feat => {
+                    const isSelected = state.selectedId === feat.id;
+                    return (
+                       <g key={feat.id} transform={`translate(${feat.x},${feat.y}) rotate(${feat.rotation}, ${feat.width/2}, ${feat.height/2})`}
+                          onMouseDown={(e) => onMouseDown(e, 'feature', feat.id)}
+                          className="cursor-move group"
+                       >
+                          {/* Basic Shape based on type - simplified for now */}
+                          <rect width={feat.width} height={feat.height} fill={feat.type === 'wall' ? '#1e293b' : feat.type === 'window' ? '#bfdbfe' : '#e2e8f0'} 
+                                stroke={isSelected ? '#6366f1' : '#64748b'} strokeWidth={isSelected ? 2 : 1} opacity={0.8} />
+                          
+                          {feat.type !== 'wall' && feat.type !== 'fence' && (
+                              <text x={feat.width/2 + (feat.labelX || 0)} y={feat.height/2 + (feat.labelY || 0)} textAnchor="middle" dominantBaseline="middle" 
+                                    fontSize={feat.fontSize || 8} fill="#475569" className="pointer-events-none select-none">
+                                    {feat.label}
+                              </text>
+                          )}
+                          
+                          {isSelected && (
+                             <>
+                                <circle cx={feat.width} cy={feat.height} r={4} fill="white" stroke="#6366f1" className="cursor-nwse-resize" onMouseDown={(e) => onMouseDown(e, 'resize', feat.id)} />
+                                <circle cx={feat.width/2} cy={-10} r={4} fill="#6366f1" className="cursor-grab" onMouseDown={(e) => onMouseDown(e, 'rotate', feat.id)} />
+                                <circle cx={feat.width/2 + (feat.labelX||0)} cy={feat.height/2 + (feat.labelY||0)} r={3} fill="#10b981" className="cursor-move opacity-0 group-hover:opacity-100" onMouseDown={(e) => onMouseDown(e, 'label_move', feat.id)} />
+                             </>
+                          )}
+                       </g>
+                    );
+                })}
+
+                {/* Exits */}
+                {state.exits.map(exit => (
+                    <g key={exit.id} transform={`translate(${exit.x},${exit.y}) rotate(${exit.rotation})`}
+                       onMouseDown={(e) => onMouseDown(e, 'exit', exit.id)}
+                       className="cursor-move"
+                    >
+                       <circle r={12} fill={exit.type.includes('exit') ? '#ef4444' : '#f59e0b'} stroke="white" strokeWidth={2} />
+                       <text x={0 + (exit.labelX || 0)} y={24 + (exit.labelY || 0)} textAnchor="middle" fontSize={exit.fontSize || 9} fontWeight="bold" fill={exit.type.includes('exit') ? '#ef4444' : '#f59e0b'} className="select-none">{exit.label}</text>
+                       {state.selectedId === exit.id && (
+                          <circle cx={0} cy={-20} r={4} fill="#6366f1" className="cursor-grab" onMouseDown={(e) => onMouseDown(e, 'rotate', exit.id)} />
+                       )}
+                       {state.selectedId === exit.id && (
+                          <circle cx={0 + (exit.labelX||0)} cy={24 + (exit.labelY||0)} r={3} fill="#10b981" className="cursor-move" onMouseDown={(e) => onMouseDown(e, 'label_move', exit.id)} />
+                       )}
                     </g>
-                  )}
-                  {/* Fallback for others */}
-                  {!['door', 'sliding-door', 'window', 'stairs', 'toilet', 'single-bed', 'double-bed', 'sink-single', 'sink-double', 'bathtub', 'shower', 'sofa', 'table', 'range', 'fridge', 'closet-double', 'closet-unit', 'washer-dryer', 'fireplace', 'vanity-single', 'vanity-double', 'desk', 'water-heater', 'wall', 'fence', 'bathroom', 'garden', 'driveway', 'label'].includes(f.type) && (
-                     <rect width={f.width} height={f.height} fill={f.type.includes('bed') || f.type.includes('table') || f.type.includes('sofa') ? "white" : "#f1f5f9"} stroke="#334155" strokeWidth="2" rx={2}/>
-                  )}
-                   {/* Fallback label */}
-                   {f.type !== 'label' && (
-                     <>
-                      <text x={f.width/2 + (f.labelX || 0)} y={f.height + 11 + (f.labelY || 0)} textAnchor="middle" className="font-black fill-slate-500 uppercase tracking-tight pointer-events-none" style={{ fontSize: f.fontSize || 8 }}>{f.label}</text>
-                      {state.selectedId === f.id && (
-                        <circle cx={f.width/2 + (f.labelX || 0) + 6} cy={f.height + 11 + (f.labelY || 0) - 3} r={3} fill="#f59e0b" className="cursor-move print:hidden" onMouseDown={e => onMouseDown(e, 'label_move', f.id)} />
-                      )}
-                     </>
-                   )}
+                ))}
 
-                  {state.selectedId === f.id && (
-                     <>
-                        <circle cx={f.width} cy={f.height} r={9} className="fill-indigo-600 stroke-white stroke-2 shadow-sm print:hidden" onMouseDown={e => onMouseDown(e, 'resize', f.id)} />
-                        {/* Rotation Handle - Top Center */}
-                        <g className="print:hidden cursor-grab active:cursor-grabbing group/rotate" onMouseDown={e => onMouseDown(e, 'rotate', f.id)}>
-                            <line x1={f.width/2} y1={0} x2={f.width/2} y2={-25} stroke="#4f46e5" strokeWidth="2" />
-                            <circle cx={f.width/2} cy={-25} r={8} className="fill-white stroke-indigo-600 stroke-2 group-hover/rotate:fill-indigo-100" />
-                            <RotateIcon x={f.width/2 - 5} y={-30} size={10} className="text-indigo-600 pointer-events-none" />
-                        </g>
-                     </>
-                  )}
-                </g>
-              ))}
+                {/* Safety Routes */}
+                {state.routes.map(route => (
+                   <polyline key={route.id} points={route.points.map(p => `${p.x},${p.y}`).join(' ')} 
+                             fill="none" stroke={route.color} strokeWidth={3} strokeDasharray="5,5" opacity={0.7} />
+                ))}
 
-              {/* EXITS */}
-              {state.exits.map(exit => (
-                <g 
-                    key={exit.id} 
-                    transform={`translate(${exit.x}, ${exit.y}) rotate(${exit.rotation}, 0, 0)`}
-                    onMouseDown={e => onMouseDown(e, 'exit', exit.id)} 
-                    onClick={e => e.stopPropagation()}
-                    className="cursor-move"
-                >
-                   {/* Visuals for exit based on type */}
-                   {['extinguisher', 'fire-alarm', 'first-aid'].includes(exit.type) ? (
-                       <circle r={8} fill={exit.type === 'first-aid' ? '#bfdbfe' : '#fecaca'} stroke={exit.type === 'first-aid' ? '#1d4ed8' : '#dc2626'} strokeWidth="2" />
-                   ) : (
-                       // Primary/Secondary exits might be rendered as arrows or text
-                       <rect x={-15} y={-10} width={30} height={20} fill="#dcfce7" stroke="#16a34a" strokeWidth="2" rx={4} />
-                   )}
-                   
-                   {/* Icons for Exits - using foreignObject is tricky, so simple text representations inside SVG primitives */}
-                   {exit.type === 'extinguisher' && <text dy={3} textAnchor="middle" className="font-bold fill-red-700 text-[10px]">EXT</text>}
-                   {exit.type === 'fire-alarm' && <text dy={3} textAnchor="middle" className="font-bold fill-red-700 text-[10px]">ALM</text>}
-                   {exit.type === 'first-aid' && <text dy={3} textAnchor="middle" className="font-bold fill-blue-700 text-[10px]">+</text>}
-                   {exit.type === 'primary' && <text dy={4} textAnchor="middle" className="font-black fill-green-800 text-[8px] tracking-tighter">EXIT</text>}
-                   
-                   {/* Text Label */}
-                   <text x={exit.labelX || 0} y={20 + (exit.labelY || 0)} textAnchor="middle" className="font-black fill-slate-800 text-[8px] uppercase tracking-wider pointer-events-none" style={{ fontSize: exit.fontSize || 8 }}>{exit.label}</text>
-                   
-                   {state.selectedId === exit.id && (
-                     <>
-                        <circle cx={(exit.labelX || 0) + 4} cy={20 + (exit.labelY || 0) - 2} r={3} fill="#f59e0b" className="cursor-move print:hidden" onMouseDown={e => onMouseDown(e, 'label_move', exit.id)} />
-                        
-                        <circle r={14} fill="none" stroke="#4f46e5" strokeWidth="2" strokeDasharray="3 3" className="animate-spin-slow print:hidden" />
-                         {/* Rotation Handle */}
-                        <g className="print:hidden cursor-grab active:cursor-grabbing group/rotate" onMouseDown={e => onMouseDown(e, 'rotate', exit.id)}>
-                            <line x1={0} y1={-14} x2={0} y2={-25} stroke="#4f46e5" strokeWidth="2" />
-                            <circle cx={0} cy={-25} r={6} className="fill-white stroke-indigo-600 stroke-2 group-hover/rotate:fill-indigo-100" />
-                        </g>
-                     </>
-                   )}
-                </g>
-              ))}
-            </svg>
-          </div>
-        </div>
+                {/* Active Route Drawing */}
+                {activeRoute && activeRoute.length > 0 && (
+                   <polyline points={activeRoute.map(p => `${p.x},${p.y}`).join(' ')} 
+                             fill="none" stroke="#ef4444" strokeWidth={3} strokeDasharray="5,5" />
+                )}
+             </svg>
+             
+             {/* Floating Controls for Active Route */}
+             {state.mode === 'route' && (
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-4 py-2 rounded-full shadow-lg text-xs font-bold flex items-center gap-3">
+                   <span>Click points to draw route...</span>
+                   <button onClick={finishRoute} className="bg-green-500 hover:bg-green-600 px-3 py-1 rounded-full">Finish</button>
+                   <button onClick={() => { setActiveRoute(null); setState(p => ({...p, mode: 'safety'})); }} className="hover:text-red-300">Cancel</button>
+                </div>
+             )}
+         </div>
       </main>
     </div>
   );
