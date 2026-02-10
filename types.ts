@@ -76,6 +76,7 @@ export type AppState = {
   snapToGrid: boolean;
   canvasWidth: number;
   canvasHeight: number;
+  scale: number;
 };
 
 export type SavedProject = {

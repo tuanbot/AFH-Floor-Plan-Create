@@ -68,7 +68,6 @@ import { Room, ExitPoint, HouseFeature, HouseDetails, AppState, SafetyRoute, Rou
 import { analyzeSafetyPlan, convertSketchToDiagram } from './geminiService';
 
 const DEFAULT_CANVAS_SIZE = 800;
-const PX_TO_INCH = 0.6;
 
 const generateId = () => `id-${Math.random().toString(36).slice(2, 11)}-${Date.now()}`;
 
@@ -92,6 +91,7 @@ const createInitialState = (): AppState => ({
   snapToGrid: true,
   canvasWidth: DEFAULT_CANVAS_SIZE,
   canvasHeight: DEFAULT_CANVAS_SIZE,
+  scale: 0.6, // Default: 1px = 0.6 inches
 });
 
 const App: React.FC = () => {
@@ -394,6 +394,7 @@ const App: React.FC = () => {
         routes: project.state.routes || [],
         canvasWidth: project.state.canvasWidth || DEFAULT_CANVAS_SIZE,
         canvasHeight: project.state.canvasHeight || DEFAULT_CANVAS_SIZE,
+        scale: project.state.scale || 0.6,
       };
       setState(newState);
       setHistory([newState]);
@@ -514,7 +515,14 @@ const App: React.FC = () => {
     img.src = url;
   };
 
-  const formatDim = (px: number) => `${Math.round(px * PX_TO_INCH)}"`;
+  const formatDim = (px: number) => {
+    const scale = state.scale || 0.6;
+    const totalInches = Math.round(px * scale);
+    const feet = Math.floor(totalInches / 12);
+    const inches = totalInches % 12;
+    if (feet > 0) return `${feet}' ${inches}"`;
+    return `${inches}"`;
+  };
 
   const handleAIAnalysis = async () => {
     setIsAnalyzing(true);
@@ -1325,6 +1333,24 @@ const App: React.FC = () => {
                 <option value="20">20px</option>
                 <option value="40">40px</option>
                 <option value="50">50px</option>
+              </select>
+            </div>
+
+            {/* Scale Control */}
+            <div className="flex items-center gap-1 mr-2 border border-slate-200 rounded-lg bg-white p-1" title="Scale (Inches per Pixel)">
+              <Scaling size={16} className="text-slate-400 ml-1"/>
+              <select 
+                value={state.scale}
+                onChange={(e) => setState(prev => ({...prev, scale: Number(e.target.value)}))}
+                className="text-[10px] font-black bg-transparent outline-none text-slate-600 w-20 text-center cursor-pointer"
+              >
+                <option value="0.25">1px = 0.25"</option>
+                <option value="0.5">1px = 0.5"</option>
+                <option value="0.6">1px = 0.6" (Def)</option>
+                <option value="1">1px = 1"</option>
+                <option value="2">1px = 2"</option>
+                <option value="6">1px = 6"</option>
+                <option value="12">1px = 1'</option>
               </select>
             </div>
 
