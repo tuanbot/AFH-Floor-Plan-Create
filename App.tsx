@@ -518,10 +518,7 @@ const App: React.FC = () => {
   const formatDim = (px: number) => {
     const scale = state.scale || 0.6;
     const totalInches = Math.round(px * scale);
-    const feet = Math.floor(totalInches / 12);
-    const inches = totalInches % 12;
-    if (feet > 0) return `${feet}' ${inches}"`;
-    return `${inches}"`;
+    return `${totalInches}"`;
   };
 
   const handleAIAnalysis = async () => {
@@ -693,7 +690,8 @@ const App: React.FC = () => {
     if (activeRoute && activeRoute.length > 1) {
       const newRoute: SafetyRoute = { id: `route-${Date.now()}`, points: activeRoute, color: '#ef4444' };
       setState(prev => {
-         const next = { ...prev, routes: [...prev.routes, newRoute], mode: 'safety' };
+         // Fix: Explicitly type 'next' as AppState to ensure 'mode' is typed as the union type and not string
+         const next: AppState = { ...prev, routes: [...prev.routes, newRoute], mode: 'safety' };
          pushHistory(next);
          return next;
       });
@@ -1252,6 +1250,19 @@ const App: React.FC = () => {
                 {isAnalyzing ? <Loader2 size={18} className="animate-spin"/> : <BrainCircuit size={18}/>}
                 {isAnalyzing ? 'RUNNING AI SAFETY AUDIT...' : 'AI SAFETY AUDIT'}
               </button>
+              
+               {/* Display Analysis Result in Sidebar for Safety Mode */}
+               {analysisResult && (
+                  <div className="p-4 bg-slate-800 rounded-2xl text-white text-xs leading-relaxed shadow-lg animate-in fade-in slide-in-from-bottom-4">
+                    <div className="flex justify-between items-center mb-2 border-b border-slate-700 pb-2">
+                      <strong className="text-indigo-400 uppercase tracking-widest">AI Audit Report</strong>
+                      <button onClick={() => setAnalysisResult(null)}><X size={14}/></button>
+                    </div>
+                    <div className="whitespace-pre-wrap max-h-60 overflow-y-auto custom-scrollbar">
+                      {analysisResult}
+                    </div>
+                  </div>
+               )}
              </div>
           )}
         </div>
