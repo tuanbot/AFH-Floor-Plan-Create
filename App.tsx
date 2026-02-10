@@ -614,7 +614,7 @@ const App: React.FC = () => {
       dishwasher: { w: 30, h: 30 }, range: { w: 40, h: 40 }, 'washer-dryer': { w: 60, h: 35 }, 
       'water-heater': { w: 30, h: 30 }, 'elec-panel': { w: 30, h: 10 }, fireplace: { w: 80, h: 30 },
       wall: { w: 200, h: 6 }, label: { w: 100, h: 30 },
-      fence: { w: 200, h: 4 }
+      fence: { w: 200, h: 4 }, bathroom: { w: 120, h: 100 }
     }[type];
     const newFeature: HouseFeature = {
       id: `feature-${Date.now()}`, type, x: 250, y: 250, width: dimensions.w, height: dimensions.h, 
@@ -1076,6 +1076,7 @@ const App: React.FC = () => {
               <section className="space-y-3">
                 <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b pb-1">Bath & Private</h2>
                 <div className="grid grid-cols-3 gap-2">
+                  <button onClick={() => addFeature('bathroom')} className={sidebarButtonClass}><Bath size={14}/> Bath Unit</button>
                   <button onClick={() => addFeature('toilet')} className={sidebarButtonClass}><Bath size={14}/> Toilet</button>
                   <button onClick={() => addFeature('shower')} className={sidebarButtonClass}><Waves size={14}/> Shower</button>
                   <button onClick={() => addFeature('bathtub')} className={sidebarButtonClass}><Bath size={14}/> Bath</button>
@@ -1389,7 +1390,11 @@ const App: React.FC = () => {
                 onChange={(e) => setState(prev => ({...prev, scale: Number(e.target.value)}))}
                 className="text-[10px] font-black bg-transparent outline-none text-slate-600 w-20 text-center cursor-pointer"
               >
+                <option value="0.05">1px = 0.05"</option>
+                <option value="0.1">1px = 0.1"</option>
+                <option value="0.2">1px = 0.2"</option>
                 <option value="0.25">1px = 0.25"</option>
+                <option value="0.4">1px = 0.4"</option>
                 <option value="0.5">1px = 0.5"</option>
                 <option value="0.6">1px = 0.6" (Def)</option>
                 <option value="1">1px = 1"</option>
@@ -1508,6 +1513,17 @@ const App: React.FC = () => {
                       {[...Array(Math.floor(f.width / 30) + 1)].map((_, i) => (
                          <circle key={i} cx={Math.min(i * 30, f.width - (f.height/2))} cy={f.height/2} r={f.height} fill="#78350f" />
                       ))}
+                    </g>
+                  )}
+                  {f.type === 'bathroom' && (
+                    <g>
+                      <rect width={f.width} height={f.height} fill="#f0f9ff" stroke="#334155" strokeWidth="2" />
+                      {/* Toilet representation */}
+                      <rect x={f.width*0.1} y={f.height*0.1} width={f.width*0.25} height={f.height*0.25} fill="white" stroke="#94a3b8" rx={2} />
+                      <circle cx={f.width*0.225} cy={f.height*0.225} r={f.width*0.05} fill="#cbd5e1" />
+                      {/* Sink representation */}
+                      <rect x={f.width*0.6} y={f.height*0.1} width={f.width*0.3} height={f.height*0.2} fill="white" stroke="#94a3b8" />
+                      <text x={f.width/2} y={f.height*0.7} textAnchor="middle" className="text-[10px] font-bold fill-slate-400">BATH</text>
                     </g>
                   )}
                   {f.type === 'garden' && (
@@ -1692,7 +1708,7 @@ const App: React.FC = () => {
                     </g>
                   )}
                   {/* Fallback for others */}
-                  {!['door', 'sliding-door', 'window', 'stairs', 'toilet', 'single-bed', 'double-bed', 'sink-single', 'sink-double', 'bathtub', 'shower', 'sofa', 'table', 'range', 'fridge', 'closet-double', 'closet-unit', 'washer-dryer', 'fireplace', 'vanity-single', 'vanity-double', 'desk', 'water-heater', 'wall', 'fence', 'garden', 'driveway', 'label'].includes(f.type) && (
+                  {!['door', 'sliding-door', 'window', 'stairs', 'toilet', 'single-bed', 'double-bed', 'sink-single', 'sink-double', 'bathtub', 'shower', 'sofa', 'table', 'range', 'fridge', 'closet-double', 'closet-unit', 'washer-dryer', 'fireplace', 'vanity-single', 'vanity-double', 'desk', 'water-heater', 'wall', 'fence', 'bathroom', 'garden', 'driveway', 'label'].includes(f.type) && (
                      <rect width={f.width} height={f.height} fill={f.type.includes('bed') || f.type.includes('table') || f.type.includes('sofa') ? "white" : "#f1f5f9"} stroke="#334155" strokeWidth="2" rx={2}/>
                   )}
                    {/* Fallback label */}
@@ -1716,6 +1732,47 @@ const App: React.FC = () => {
                         </g>
                      </>
                   )}
+                </g>
+              ))}
+
+              {/* EXITS */}
+              {state.exits.map(exit => (
+                <g 
+                    key={exit.id} 
+                    transform={`translate(${exit.x}, ${exit.y}) rotate(${exit.rotation}, 0, 0)`}
+                    onMouseDown={e => onMouseDown(e, 'exit', exit.id)} 
+                    onClick={e => e.stopPropagation()}
+                    className="cursor-move"
+                >
+                   {/* Visuals for exit based on type */}
+                   {['extinguisher', 'fire-alarm', 'first-aid'].includes(exit.type) ? (
+                       <circle r={8} fill={exit.type === 'first-aid' ? '#bfdbfe' : '#fecaca'} stroke={exit.type === 'first-aid' ? '#1d4ed8' : '#dc2626'} strokeWidth="2" />
+                   ) : (
+                       // Primary/Secondary exits might be rendered as arrows or text
+                       <rect x={-15} y={-10} width={30} height={20} fill="#dcfce7" stroke="#16a34a" strokeWidth="2" rx={4} />
+                   )}
+                   
+                   {/* Icons for Exits - using foreignObject is tricky, so simple text representations inside SVG primitives */}
+                   {exit.type === 'extinguisher' && <text dy={3} textAnchor="middle" className="font-bold fill-red-700 text-[10px]">EXT</text>}
+                   {exit.type === 'fire-alarm' && <text dy={3} textAnchor="middle" className="font-bold fill-red-700 text-[10px]">ALM</text>}
+                   {exit.type === 'first-aid' && <text dy={3} textAnchor="middle" className="font-bold fill-blue-700 text-[10px]">+</text>}
+                   {exit.type === 'primary' && <text dy={4} textAnchor="middle" className="font-black fill-green-800 text-[8px] tracking-tighter">EXIT</text>}
+                   
+                   {/* Text Label */}
+                   <text x={exit.labelX || 0} y={20 + (exit.labelY || 0)} textAnchor="middle" className="font-black fill-slate-800 text-[8px] uppercase tracking-wider pointer-events-none" style={{ fontSize: exit.fontSize || 8 }}>{exit.label}</text>
+                   
+                   {state.selectedId === exit.id && (
+                     <>
+                        <circle cx={(exit.labelX || 0) + 4} cy={20 + (exit.labelY || 0) - 2} r={3} fill="#f59e0b" className="cursor-move print:hidden" onMouseDown={e => onMouseDown(e, 'label_move', exit.id)} />
+                        
+                        <circle r={14} fill="none" stroke="#4f46e5" strokeWidth="2" strokeDasharray="3 3" className="animate-spin-slow print:hidden" />
+                         {/* Rotation Handle */}
+                        <g className="print:hidden cursor-grab active:cursor-grabbing group/rotate" onMouseDown={e => onMouseDown(e, 'rotate', exit.id)}>
+                            <line x1={0} y1={-14} x2={0} y2={-25} stroke="#4f46e5" strokeWidth="2" />
+                            <circle cx={0} cy={-25} r={6} className="fill-white stroke-indigo-600 stroke-2 group-hover/rotate:fill-indigo-100" />
+                        </g>
+                     </>
+                   )}
                 </g>
               ))}
             </svg>
