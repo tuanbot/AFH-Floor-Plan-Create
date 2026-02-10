@@ -62,7 +62,8 @@ import {
   Type,
   AlignCenter,
   RotateCcw as ResetIcon,
-  Minus
+  Minus,
+  Fence
 } from 'lucide-react';
 import { Room, ExitPoint, HouseFeature, HouseDetails, AppState, SafetyRoute, RoutePoint, SavedProject } from './types';
 import { analyzeSafetyPlan, convertSketchToDiagram } from './geminiService';
@@ -612,7 +613,8 @@ const App: React.FC = () => {
       linen: { w: 40, h: 20 }, 'kitchen-island': { w: 100, h: 50 }, fridge: { w: 40, h: 40 }, 
       dishwasher: { w: 30, h: 30 }, range: { w: 40, h: 40 }, 'washer-dryer': { w: 60, h: 35 }, 
       'water-heater': { w: 30, h: 30 }, 'elec-panel': { w: 30, h: 10 }, fireplace: { w: 80, h: 30 },
-      wall: { w: 200, h: 10 }, label: { w: 100, h: 30 }
+      wall: { w: 200, h: 6 }, label: { w: 100, h: 30 },
+      fence: { w: 200, h: 4 }
     }[type];
     const newFeature: HouseFeature = {
       id: `feature-${Date.now()}`, type, x: 250, y: 250, width: dimensions.w, height: dimensions.h, 
@@ -799,7 +801,16 @@ const App: React.FC = () => {
       const rawNewHeight = Math.max(state.gridSize, resizingItem.startH + dh);
       
       const newWidth = state.snapToGrid ? Math.round(rawNewWidth / state.gridSize) * state.gridSize : rawNewWidth;
-      const newHeight = state.snapToGrid ? Math.round(rawNewHeight / state.gridSize) * state.gridSize : rawNewHeight;
+      
+      // Determine if we should lock height/thickness
+      const feature = state.features.find(f => f.id === resizingItem.id);
+      const isWallOrFence = feature && (feature.type === 'wall' || feature.type === 'fence');
+      
+      // For walls/fences, keep height (thickness) constant during drag resize to prevent accidental thickening
+      // Snap logic is also ignored for height in this specific case if it were applied, but here we just use startH.
+      const newHeight = isWallOrFence 
+          ? resizingItem.startH 
+          : (state.snapToGrid ? Math.round(rawNewHeight / state.gridSize) * state.gridSize : rawNewHeight);
       
       if (state.rooms.some(r => r.id === resizingItem.id)) updateRoom(resizingItem.id, { width: newWidth, height: newHeight });
       else updateFeature(resizingItem.id, { width: newWidth, height: newHeight });
@@ -1032,6 +1043,7 @@ const App: React.FC = () => {
                   <button onClick={addRoom} className={sidebarButtonClass}><Plus size={14}/> Room</button>
                   <button onClick={() => addFeature('label')} className={sidebarButtonClass}><Type size={14}/> Label</button>
                   <button onClick={() => addFeature('wall')} className={sidebarButtonClass}><BrickWall size={14}/> Wall</button>
+                  <button onClick={() => addFeature('fence')} className={sidebarButtonClass}><Fence size={14}/> Fence</button>
                   <button onClick={() => addFeature('garden')} className={sidebarButtonClass}><TreePine size={14}/> Garden</button>
                   <button onClick={() => addFeature('driveway')} className={sidebarButtonClass}><Car size={14}/> Driveway</button>
                   <button onClick={() => addFeature('door')} className={sidebarButtonClass}><DoorOpen size={14}/> Door</button>
@@ -1116,6 +1128,28 @@ const App: React.FC = () => {
                           placeholder="Enter label..."
                         />
                     </div>
+
+                    {/* Specific Thickness control for Walls and Fences */}
+                    {selectedFeature && (selectedFeature.type === 'wall' || selectedFeature.type === 'fence') && (
+                        <div className="space-y-1">
+                            <label className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Thickness (px)</label>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => {
+                                    updateFeature(selectedFeature.id, { height: Math.max(2, selectedFeature.height - 1) });
+                                    pushHistory(state);
+                                }} className="p-2 bg-white/10 rounded-lg text-white hover:bg-indigo-500 transition-colors"><Minus size={14}/></button>
+                                
+                                <div className="flex-1 text-center font-bold text-white text-xs py-2 bg-white/5 rounded-lg">
+                                    {selectedFeature.height} px
+                                </div>
+
+                                <button onClick={() => {
+                                    updateFeature(selectedFeature.id, { height: Math.max(2, selectedFeature.height + 1) });
+                                    pushHistory(state);
+                                }} className="p-2 bg-white/10 rounded-lg text-white hover:bg-indigo-500 transition-colors"><Plus size={14}/></button>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="space-y-1">
                       <label className="text-[8px] font-bold text-slate-500 uppercase tracking-widest">Font Size</label>
@@ -1411,7 +1445,7 @@ const App: React.FC = () => {
                     onMouseDown={e => onMouseDown(e, 'room', room.id)} 
                     onClick={e => e.stopPropagation()}
                 >
-                  <rect x={room.x} y={room.y} width={room.width} height={room.height} fill="white" stroke={state.selectedId === room.id ? '#4f46e5' : '#000'} strokeWidth={state.selectedId === room.id ? 4 : 2} className="cursor-move" />
+                  <rect x={room.x} y={room.y} width={room.width} height={room.height} fill="white" stroke={state.selectedId === room.id ? '#4f46e5' : '#334155'} strokeWidth={state.selectedId === room.id ? 4 : 2} className="cursor-move" />
                   <text x={room.x + 8 + (room.labelX || 0)} y={room.y + 18 + (room.labelY || 0)} className="font-black fill-slate-800 uppercase pointer-events-none tracking-widest" style={{ fontSize: room.fontSize || 9 }}>{room.name}</text>
                   
                   {/* Dimensions - rotate them back so they are readable? Or keep with room. */}
@@ -1446,25 +1480,35 @@ const App: React.FC = () => {
                   {/* ... Feature Render Logic (Door, Window, Bed, etc.) ... */}
                   {f.type === 'door' && (
                      <g>
-                      <path d={`M 0,${f.height} A ${f.width},${f.height} 0 0 1 ${f.width},0`} fill="none" stroke="#000" strokeWidth="2" strokeDasharray="4 2"/>
-                      <line x1="0" y1="0" x2="0" y2={f.height} stroke="#000" strokeWidth="4" />
+                      <path d={`M 0,${f.height} A ${f.width},${f.height} 0 0 1 ${f.width},0`} fill="none" stroke="#334155" strokeWidth="2" strokeDasharray="4 2"/>
+                      <line x1="0" y1="0" x2="0" y2={f.height} stroke="#334155" strokeWidth="4" />
                      </g>
                   )}
                   {f.type === 'sliding-door' && (
                     <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#000" strokeWidth="1" />
-                      <line x1={0} y1={f.height*0.3} x2={f.width*0.6} y2={f.height*0.3} stroke="#000" strokeWidth="2" />
-                      <line x1={f.width*0.4} y1={f.height*0.7} x2={f.width} y2={f.height*0.7} stroke="#000" strokeWidth="2" />
+                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="1" />
+                      <line x1={0} y1={f.height*0.3} x2={f.width*0.6} y2={f.height*0.3} stroke="#334155" strokeWidth="2" />
+                      <line x1={f.width*0.4} y1={f.height*0.7} x2={f.width} y2={f.height*0.7} stroke="#334155" strokeWidth="2" />
                     </g>
                   )}
                    {f.type === 'window' && (
                     <g>
-                      <rect width={f.width} height={f.height} fill="#e0f2fe" stroke="#000" strokeWidth="2" />
-                      <line x1={0} y1={f.height/2} x2={f.width} y2={f.height/2} stroke="#000" strokeWidth="1" />
+                      <rect width={f.width} height={f.height} fill="#e0f2fe" stroke="#334155" strokeWidth="2" />
+                      <line x1={0} y1={f.height/2} x2={f.width} y2={f.height/2} stroke="#334155" strokeWidth="1" />
                     </g>
                   )}
                   {f.type === 'wall' && (
-                    <rect width={f.width} height={f.height} fill="#1e293b" stroke="#000" strokeWidth="1" rx={0.5} />
+                    <rect width={f.width} height={f.height} fill="#94a3b8" rx={2} />
+                  )}
+                  {f.type === 'fence' && (
+                    <g>
+                      {/* Main rail */}
+                      <rect width={f.width} height={f.height} fill="#78350f" rx={1} />
+                      {/* Posts every ~30px */}
+                      {[...Array(Math.floor(f.width / 30) + 1)].map((_, i) => (
+                         <circle key={i} cx={Math.min(i * 30, f.width - (f.height/2))} cy={f.height/2} r={f.height} fill="#78350f" />
+                      ))}
+                    </g>
                   )}
                   {f.type === 'garden' && (
                     <g>
@@ -1484,148 +1528,148 @@ const App: React.FC = () => {
                   )}
                   {f.type === 'stairs' && (
                     <g>
-                      <rect width={f.width} height={f.height} fill="#f8fafc" stroke="#000" strokeWidth="2" />
+                      <rect width={f.width} height={f.height} fill="#f8fafc" stroke="#334155" strokeWidth="2" />
                       {[...Array(Math.floor(f.height/15))].map((_, i) => (
-                        <line key={i} x1="0" y1={i*15} x2={f.width} y2={i*15} stroke="#000" strokeWidth="1" />
+                        <line key={i} x1="0" y1={i*15} x2={f.width} y2={i*15} stroke="#334155" strokeWidth="1" />
                       ))}
                       <path d={`M ${f.width/2},${f.height-10} L ${f.width/2},10 M ${f.width/2-5},15 L ${f.width/2},10 L ${f.width/2+5},15`} fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" />
                     </g>
                   )}
                   {f.type === 'toilet' && (
                     <g>
-                      <rect x={f.width*0.1} y={0} width={f.width*0.8} height={f.height*0.25} fill="white" stroke="#000" strokeWidth="2" rx={2}/>
-                      <ellipse cx={f.width/2} cy={f.height*0.65} rx={f.width*0.35} ry={f.height*0.3} fill="white" stroke="#000" strokeWidth="2"/>
+                      <rect x={f.width*0.1} y={0} width={f.width*0.8} height={f.height*0.25} fill="white" stroke="#334155" strokeWidth="2" rx={2}/>
+                      <ellipse cx={f.width/2} cy={f.height*0.65} rx={f.width*0.35} ry={f.height*0.3} fill="white" stroke="#334155" strokeWidth="2"/>
                     </g>
                   )}
                   {f.type === 'single-bed' && (
                     <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#000" strokeWidth="2" rx={4}/>
-                      <rect x={0} y={0} width={f.width} height={f.height*0.25} fill="#f1f5f9" stroke="#000" strokeWidth="1"/>
+                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" rx={4}/>
+                      <rect x={0} y={0} width={f.width} height={f.height*0.25} fill="#f1f5f9" stroke="#334155" strokeWidth="1"/>
                       <rect x={f.width*0.15} y={f.height*0.3} width={f.width*0.7} height={f.height*0.2} fill="white" stroke="#cbd5e1" rx={5}/>
                     </g>
                   )}
                   {f.type === 'double-bed' && (
                     <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#000" strokeWidth="2" rx={4}/>
-                      <rect x={0} y={0} width={f.width} height={f.height*0.25} fill="#f1f5f9" stroke="#000" strokeWidth="1"/>
+                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" rx={4}/>
+                      <rect x={0} y={0} width={f.width} height={f.height*0.25} fill="#f1f5f9" stroke="#334155" strokeWidth="1"/>
                       <rect x={f.width*0.1} y={f.height*0.05} width={f.width*0.35} height={f.height*0.15} fill="white" stroke="#cbd5e1" rx={3}/>
                       <rect x={f.width*0.55} y={f.height*0.05} width={f.width*0.35} height={f.height*0.15} fill="white" stroke="#cbd5e1" rx={3}/>
                     </g>
                   )}
                   {f.type === 'sink-single' && (
                     <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#000" strokeWidth="2" rx={2}/>
-                      <ellipse cx={f.width/2} cy={f.height/2} rx={f.width*0.3} ry={f.height*0.3} fill="#f8fafc" stroke="#000" strokeWidth="1"/>
-                      <line x1={f.width/2} y1={f.height*0.1} x2={f.width/2} y2={f.height*0.3} stroke="#000" strokeWidth="2"/>
+                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" rx={2}/>
+                      <ellipse cx={f.width/2} cy={f.height/2} rx={f.width*0.3} ry={f.height*0.3} fill="#f8fafc" stroke="#334155" strokeWidth="1"/>
+                      <line x1={f.width/2} y1={f.height*0.1} x2={f.width/2} y2={f.height*0.3} stroke="#334155" strokeWidth="2"/>
                     </g>
                   )}
                   {f.type === 'sink-double' && (
                     <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#000" strokeWidth="2" rx={2}/>
-                      <ellipse cx={f.width*0.25} cy={f.height/2} rx={f.width*0.15} ry={f.height*0.3} fill="#f8fafc" stroke="#000" strokeWidth="1"/>
-                      <ellipse cx={f.width*0.75} cy={f.height/2} rx={f.width*0.15} ry={f.height*0.3} fill="#f8fafc" stroke="#000" strokeWidth="1"/>
+                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" rx={2}/>
+                      <ellipse cx={f.width*0.25} cy={f.height/2} rx={f.width*0.15} ry={f.height*0.3} fill="#f8fafc" stroke="#334155" strokeWidth="1"/>
+                      <ellipse cx={f.width*0.75} cy={f.height/2} rx={f.width*0.15} ry={f.height*0.3} fill="#f8fafc" stroke="#334155" strokeWidth="1"/>
                     </g>
                   )}
                   {f.type === 'bathtub' && (
                     <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#000" strokeWidth="2" rx={4}/>
-                      <rect x={f.width*0.1} y={f.height*0.1} width={f.width*0.8} height={f.height*0.8} fill="#f8fafc" stroke="#000" strokeWidth="1" rx={8}/>
+                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" rx={4}/>
+                      <rect x={f.width*0.1} y={f.height*0.1} width={f.width*0.8} height={f.height*0.8} fill="#f8fafc" stroke="#334155" strokeWidth="1" rx={8}/>
                       <circle cx={f.width*0.5} cy={f.height*0.2} r={3} fill="#94a3b8"/>
                     </g>
                   )}
                   {f.type === 'shower' && (
                     <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#000" strokeWidth="2"/>
-                      <line x1={0} y1={0} x2={f.width} y2={f.height} stroke="#000" strokeWidth="1"/>
-                      <line x1={f.width} y1={0} x2={0} y2={f.height} stroke="#000" strokeWidth="1"/>
-                      <circle cx={f.width/2} cy={f.height/2} r={3} fill="white" stroke="#000" strokeWidth="1"/>
+                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2"/>
+                      <line x1={0} y1={0} x2={f.width} y2={f.height} stroke="#334155" strokeWidth="1"/>
+                      <line x1={f.width} y1={0} x2={0} y2={f.height} stroke="#334155" strokeWidth="1"/>
+                      <circle cx={f.width/2} cy={f.height/2} r={3} fill="white" stroke="#334155" strokeWidth="1"/>
                     </g>
                   )}
                   {f.type === 'sofa' && (
                     <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#000" strokeWidth="2" rx={2}/>
-                      <rect x={0} y={0} width={f.width} height={f.height*0.3} fill="white" stroke="#000" strokeWidth="1"/>
-                      <rect x={0} y={0} width={f.width*0.15} height={f.height} fill="white" stroke="#000" strokeWidth="1"/>
-                      <rect x={f.width*0.85} y={0} width={f.width*0.15} height={f.height} fill="white" stroke="#000" strokeWidth="1"/>
+                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" rx={2}/>
+                      <rect x={0} y={0} width={f.width} height={f.height*0.3} fill="white" stroke="#334155" strokeWidth="1"/>
+                      <rect x={0} y={0} width={f.width*0.15} height={f.height} fill="white" stroke="#334155" strokeWidth="1"/>
+                      <rect x={f.width*0.85} y={0} width={f.width*0.15} height={f.height} fill="white" stroke="#334155" strokeWidth="1"/>
                     </g>
                   )}
                   {f.type === 'table' && (
                     <g>
-                      <rect width={f.width} height={f.height} fill="#f8fafc" stroke="#000" strokeWidth="2" rx={2}/>
+                      <rect width={f.width} height={f.height} fill="#f8fafc" stroke="#334155" strokeWidth="2" rx={2}/>
                       <rect x={f.width*0.1} y={f.height*0.1} width={f.width*0.8} height={f.height*0.8} fill="white" stroke="#e2e8f0" strokeWidth="1" rx={1}/>
                     </g>
                   )}
                   {f.type === 'range' && (
                       <g>
-                          <rect width={f.width} height={f.height} fill="#f1f5f9" stroke="#000" strokeWidth="2" rx={2}/>
-                          <circle cx={f.width*0.25} cy={f.height*0.25} r={f.width*0.15} fill="none" stroke="#000" strokeWidth="1"/>
-                          <circle cx={f.width*0.75} cy={f.height*0.25} r={f.width*0.15} fill="none" stroke="#000" strokeWidth="1"/>
-                          <circle cx={f.width*0.25} cy={f.height*0.75} r={f.width*0.15} fill="none" stroke="#000" strokeWidth="1"/>
-                          <circle cx={f.width*0.75} cy={f.height*0.75} r={f.width*0.15} fill="none" stroke="#000" strokeWidth="1"/>
+                          <rect width={f.width} height={f.height} fill="#f1f5f9" stroke="#334155" strokeWidth="2" rx={2}/>
+                          <circle cx={f.width*0.25} cy={f.height*0.25} r={f.width*0.15} fill="none" stroke="#334155" strokeWidth="1"/>
+                          <circle cx={f.width*0.75} cy={f.height*0.25} r={f.width*0.15} fill="none" stroke="#334155" strokeWidth="1"/>
+                          <circle cx={f.width*0.25} cy={f.height*0.75} r={f.width*0.15} fill="none" stroke="#334155" strokeWidth="1"/>
+                          <circle cx={f.width*0.75} cy={f.height*0.75} r={f.width*0.15} fill="none" stroke="#334155" strokeWidth="1"/>
                       </g>
                   )}
                   {f.type === 'fridge' && (
                       <g>
-                          <rect width={f.width} height={f.height} fill="white" stroke="#000" strokeWidth="2" rx={2}/>
-                          <line x1={0} y1={f.height*0.3} x2={f.width} y2={f.height*0.3} stroke="#000" strokeWidth="1"/>
+                          <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" rx={2}/>
+                          <line x1={0} y1={f.height*0.3} x2={f.width} y2={f.height*0.3} stroke="#334155" strokeWidth="1"/>
                           <text x={f.width/2} y={f.height*0.7} textAnchor="middle" fontSize={10} className="font-bold fill-slate-400">REF</text>
                       </g>
                   )}
                   {f.type === 'closet-double' && (
                     <g>
-                      <rect width={f.width} height={f.height} fill="none" stroke="#000" strokeWidth="1" strokeDasharray="2 2" />
+                      <rect width={f.width} height={f.height} fill="none" stroke="#334155" strokeWidth="1" strokeDasharray="2 2" />
                       <polyline
                           points={`0,${f.height} ${f.width * 0.25},${f.height * 0.5} ${f.width * 0.5},${f.height} ${f.width * 0.75},${f.height * 0.5} ${f.width},${f.height}`}
                           fill="none"
-                          stroke="#000"
+                          stroke="#334155"
                           strokeWidth="2"
                       />
                     </g>
                   )}
                   {f.type === 'closet-unit' && (
                     <g>
-                      <rect width={f.width} height={f.height} fill="white" stroke="#000" strokeWidth="2" />
-                      <line x1={0} y1={f.height/2} x2={f.width} y2={f.height/2} stroke="#000" strokeWidth="1" strokeDasharray="5 5"/>
+                      <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" />
+                      <line x1={0} y1={f.height/2} x2={f.width} y2={f.height/2} stroke="#334155" strokeWidth="1" strokeDasharray="5 5"/>
                     </g>
                   )}
                   {f.type === 'washer-dryer' && (
                       <g>
-                          <rect width={f.width} height={f.height} fill="white" stroke="#000" strokeWidth="2" rx={2}/>
-                          <circle cx={f.width/2} cy={f.height/2} r={f.width*0.3} fill="none" stroke="#000" strokeWidth="1"/>
+                          <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2" rx={2}/>
+                          <circle cx={f.width/2} cy={f.height/2} r={f.width*0.3} fill="none" stroke="#334155" strokeWidth="1"/>
                           <rect x={f.width*0.1} y={f.height*0.1} width={f.width*0.8} height={f.height*0.15} fill="#cbd5e1"/>
                           <text x={f.width/2} y={f.height*0.6} textAnchor="middle" fontSize={8} className="font-bold fill-slate-400">W/D</text>
                       </g>
                   )}
                   {f.type === 'fireplace' && (
                       <g>
-                          <rect width={f.width} height={f.height} fill="#fff7ed" stroke="#000" strokeWidth="2"/>
-                          <path d={`M ${f.width*0.2},${f.height} L ${f.width*0.2},${f.height*0.2} L ${f.width*0.8},${f.height*0.2} L ${f.width*0.8},${f.height}`} fill="none" stroke="#000" strokeWidth="2"/>
+                          <rect width={f.width} height={f.height} fill="#fff7ed" stroke="#334155" strokeWidth="2"/>
+                          <path d={`M ${f.width*0.2},${f.height} L ${f.width*0.2},${f.height*0.2} L ${f.width*0.8},${f.height*0.2} L ${f.width*0.8},${f.height}`} fill="none" stroke="#334155" strokeWidth="2"/>
                           <path d={`M ${f.width*0.3},${f.height} Q ${f.width*0.5},${f.height*0.5} ${f.width*0.7},${f.height}`} fill="none" stroke="#fdba74" strokeWidth="2"/>
                       </g>
                   )}
                   {f.type.startsWith('vanity') && (
                       <g>
-                          <rect width={f.width} height={f.height} fill="white" stroke="#000" strokeWidth="2"/>
+                          <rect width={f.width} height={f.height} fill="white" stroke="#334155" strokeWidth="2"/>
                           {f.type === 'vanity-single' ? (
-                              <ellipse cx={f.width/2} cy={f.height/2} rx={f.width*0.25} ry={f.height*0.35} fill="#f1f5f9" stroke="#000" strokeWidth="1"/>
+                              <ellipse cx={f.width/2} cy={f.height/2} rx={f.width*0.25} ry={f.height*0.35} fill="#f1f5f9" stroke="#334155" strokeWidth="1"/>
                           ) : (
                               <>
-                              <ellipse cx={f.width*0.25} cy={f.height/2} rx={f.width*0.15} ry={f.height*0.35} fill="#f1f5f9" stroke="#000" strokeWidth="1"/>
-                              <ellipse cx={f.width*0.75} cy={f.height/2} rx={f.width*0.15} ry={f.height*0.35} fill="#f1f5f9" stroke="#000" strokeWidth="1"/>
+                              <ellipse cx={f.width*0.25} cy={f.height/2} rx={f.width*0.15} ry={f.height*0.35} fill="#f1f5f9" stroke="#334155" strokeWidth="1"/>
+                              <ellipse cx={f.width*0.75} cy={f.height/2} rx={f.width*0.15} ry={f.height*0.35} fill="#f1f5f9" stroke="#334155" strokeWidth="1"/>
                               </>
                           )}
                       </g>
                   )}
                   {f.type === 'desk' && (
                       <g>
-                          <rect width={f.width} height={f.height} fill="#f8fafc" stroke="#000" strokeWidth="2"/>
-                          <rect x={f.width*0.1} y={f.height*0.1} width={f.width*0.2} height={f.height*0.8} fill="white" stroke="#000" strokeWidth="1"/>
-                          <rect x={f.width*0.7} y={f.height*0.1} width={f.width*0.2} height={f.height*0.8} fill="white" stroke="#000" strokeWidth="1"/>
+                          <rect width={f.width} height={f.height} fill="#f8fafc" stroke="#334155" strokeWidth="2"/>
+                          <rect x={f.width*0.1} y={f.height*0.1} width={f.width*0.2} height={f.height*0.8} fill="white" stroke="#334155" strokeWidth="1"/>
+                          <rect x={f.width*0.7} y={f.height*0.1} width={f.width*0.2} height={f.height*0.8} fill="white" stroke="#334155" strokeWidth="1"/>
                       </g>
                   )}
                   {f.type === 'water-heater' && (
                       <g>
-                          <circle cx={f.width/2} cy={f.height/2} r={Math.min(f.width, f.height)/2} fill="white" stroke="#000" strokeWidth="2"/>
+                          <circle cx={f.width/2} cy={f.height/2} r={Math.min(f.width, f.height)/2} fill="white" stroke="#334155" strokeWidth="2"/>
                           <text x={f.width/2} y={f.height/2 + 3} textAnchor="middle" fontSize={8} className="font-bold">WH</text>
                       </g>
                   )}
@@ -1648,8 +1692,8 @@ const App: React.FC = () => {
                     </g>
                   )}
                   {/* Fallback for others */}
-                  {!['door', 'sliding-door', 'window', 'stairs', 'toilet', 'single-bed', 'double-bed', 'sink-single', 'sink-double', 'bathtub', 'shower', 'sofa', 'table', 'range', 'fridge', 'closet-double', 'closet-unit', 'washer-dryer', 'fireplace', 'vanity-single', 'vanity-double', 'desk', 'water-heater', 'wall', 'garden', 'driveway', 'label'].includes(f.type) && (
-                     <rect width={f.width} height={f.height} fill={f.type.includes('bed') || f.type.includes('table') || f.type.includes('sofa') ? "white" : "#f1f5f9"} stroke="#000" strokeWidth="2" rx={2}/>
+                  {!['door', 'sliding-door', 'window', 'stairs', 'toilet', 'single-bed', 'double-bed', 'sink-single', 'sink-double', 'bathtub', 'shower', 'sofa', 'table', 'range', 'fridge', 'closet-double', 'closet-unit', 'washer-dryer', 'fireplace', 'vanity-single', 'vanity-double', 'desk', 'water-heater', 'wall', 'fence', 'garden', 'driveway', 'label'].includes(f.type) && (
+                     <rect width={f.width} height={f.height} fill={f.type.includes('bed') || f.type.includes('table') || f.type.includes('sofa') ? "white" : "#f1f5f9"} stroke="#334155" strokeWidth="2" rx={2}/>
                   )}
                    {/* Fallback label */}
                    {f.type !== 'label' && (
@@ -1674,86 +1718,8 @@ const App: React.FC = () => {
                   )}
                 </g>
               ))}
-
-              {/* EXITS */}
-              {state.exits.map(ex => (
-                <g 
-                    key={ex.id} 
-                    transform={`rotate(${ex.rotation || 0}, ${ex.x}, ${ex.y})`}
-                    onMouseDown={e => onMouseDown(e, 'exit', ex.id)} 
-                    onClick={e => e.stopPropagation()} 
-                    className="cursor-move z-20 group"
-                >
-                   {/* PRIMARY EXIT */}
-                   {ex.type === 'primary' && (
-                      <g>
-                         <circle cx={ex.x} cy={ex.y} r={18} fill="#22c55e" stroke="white" strokeWidth="2" className="shadow-sm"/>
-                         <path d={`M ${ex.x-6},${ex.y} l 12,0 m -4,-4 l 4,4 l -4,4`} fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-                         <text x={ex.x} y={ex.y + 30} textAnchor="middle" className="font-black fill-green-700 uppercase select-none" style={{ fontSize: ex.fontSize || 10 }}>EXIT</text>
-                      </g>
-                   )}
-
-                   {/* FIRST AID */}
-                   {ex.type === 'first-aid' && (
-                      <g>
-                        <rect x={ex.x - 15} y={ex.y - 15} width={30} height={30} rx={6} fill="#22c55e" stroke="white" strokeWidth="2" className="shadow-sm" />
-                        <path d={`M ${ex.x-4},${ex.y-10} L ${ex.x+4},${ex.y-10} L ${ex.x+4},${ex.y-4} L ${ex.x+10},${ex.y-4} L ${ex.x+10},${ex.y+4} L ${ex.x+4},${ex.y+4} L ${ex.x+4},${ex.y+10} L ${ex.x-4},${ex.y+10} L ${ex.x-4},${ex.y+4} L ${ex.x-10},${ex.y+4} L ${ex.x-10},${ex.y-4} L ${ex.x-4},${ex.y-4} Z`} fill="white" />
-                        <text x={ex.x + (ex.labelX || 0)} y={ex.y + 28 + (ex.labelY || 0)} textAnchor="middle" className="font-black fill-green-700 uppercase drop-shadow-sm select-none" style={{ fontSize: ex.fontSize || 9 }}>{ex.label}</text>
-                      </g>
-                   )}
-
-                   {/* FIRE EXTINGUISHER */}
-                   {ex.type === 'extinguisher' && (
-                      <g>
-                        <path d={`M ${ex.x-6},${ex.y-10} L ${ex.x+6},${ex.y-10} L ${ex.x+8},${ex.y+15} L ${ex.x-8},${ex.y+15} Z`} fill="#ef4444" stroke="#991b1b" strokeWidth="2" />
-                        <rect x={ex.x-3} y={ex.y-14} width={6} height={4} fill="#374151" />
-                        <path d={`M ${ex.x+3},${ex.y-12} Q ${ex.x+12},${ex.y-12} ${ex.x+12},${ex.y}`} fill="none" stroke="#1f2937" strokeWidth="2" />
-                        <text x={ex.x + (ex.labelX || 0)} y={ex.y + 28 + (ex.labelY || 0)} textAnchor="middle" className="font-black fill-red-700 uppercase drop-shadow-sm select-none" style={{ fontSize: ex.fontSize || 9 }}>{ex.label}</text>
-                      </g>
-                   )}
-
-                   {/* FIRE ALARM */}
-                   {ex.type === 'fire-alarm' && (
-                      <g>
-                        <circle cx={ex.x} cy={ex.y} r={14} fill="#ef4444" stroke="#991b1b" strokeWidth="2" />
-                        <circle cx={ex.x} cy={ex.y} r={10} fill="none" stroke="white" strokeWidth="1" />
-                        <path d={`M ${ex.x-2},${ex.y-6} L ${ex.x-2},${ex.y+4} L ${ex.x+4},${ex.y+4}`} fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" />
-                        <path d={`M ${ex.x-18},${ex.y-8} Q ${ex.x-22},${ex.y} ${ex.x-18},${ex.y+8}`} fill="none" stroke="#ef4444" strokeWidth="2" opacity="0.6" />
-                        <path d={`M ${ex.x+18},${ex.y-8} Q ${ex.x+22},${ex.y} ${ex.x+18},${ex.y+8}`} fill="none" stroke="#ef4444" strokeWidth="2" opacity="0.6" />
-                        <text x={ex.x + (ex.labelX || 0)} y={ex.y + 28 + (ex.labelY || 0)} textAnchor="middle" className="font-black fill-red-700 uppercase drop-shadow-sm select-none" style={{ fontSize: ex.fontSize || 9 }}>{ex.label}</text>
-                      </g>
-                   )}
-
-                   {/* Fallback for 'secondary' or others */}
-                   {!['primary', 'first-aid', 'extinguisher', 'fire-alarm'].includes(ex.type) && (
-                      <g>
-                        <circle cx={ex.x} cy={ex.y} r={18} fill="#fff" stroke="#94a3b8" strokeWidth="2" className="shadow-sm"/>
-                        <text x={ex.x} y={ex.y+4} textAnchor="middle" className="text-[10px] font-black fill-slate-500">{ex.type.substring(0,2).toUpperCase()}</text>
-                        <text x={ex.x + (ex.labelX || 0)} y={ex.y + 35 + (ex.labelY || 0)} textAnchor="middle" className="font-black fill-slate-900 uppercase pointer-events-none drop-shadow-sm" style={{ fontSize: ex.fontSize || 10 }}>{ex.label}</text>
-                      </g>
-                   )}
-
-                   {/* Selection and Rotation handles remain the same */}
-                   {state.selectedId === ex.id && (
-                     <>
-                        {/* Label Move Handle */}
-                        {ex.type !== 'primary' && (
-                          <circle cx={ex.x + (ex.labelX || 0) + 6} cy={ex.y + (ex.type !== 'fire-alarm' && ex.type !== 'extinguisher' && ex.type !== 'first-aid' ? 35 : 28) + (ex.labelY || 0) - 3} r={3} fill="#f59e0b" className="cursor-move print:hidden" onMouseDown={e => onMouseDown(e, 'label_move', ex.id)} />
-                        )}
-
-                        <g className="print:hidden cursor-grab active:cursor-grabbing group/rotate" onMouseDown={e => onMouseDown(e, 'rotate', ex.id)}>
-                            <line x1={ex.x} y1={ex.y - 20} x2={ex.x} y2={ex.y - 45} stroke="#4f46e5" strokeWidth="2" />
-                            <circle cx={ex.x} cy={ex.y - 45} r={8} className="fill-white stroke-indigo-600 stroke-2 group-hover/rotate:fill-indigo-100" />
-                            <RotateIcon x={ex.x - 5} y={ex.y - 50} size={10} className="text-indigo-600 pointer-events-none" />
-                        </g>
-                     </>
-                   )}
-                </g>
-              ))}
             </svg>
           </div>
-          
-          {/* ... Analysis Result Panel ... */}
         </div>
       </main>
     </div>
